@@ -1,0 +1,42 @@
+# TixScanner Configuration Template
+# Copy this file to config.ini and fill in your values
+
+[api]
+# Ticketmaster API key (get from developer.ticketmaster.com)
+ticketmaster_key = YOUR_TICKETMASTER_API_KEY_HERE
+
+[email]
+# Gmail settings for notifications
+gmail_user = your.email@gmail.com
+gmail_password = YOUR_GMAIL_APP_PASSWORD_HERE
+recipient = your.email@gmail.com
+
+[monitoring]
+# How often to check prices (in hours)
+check_frequency_hours = 2
+
+# Time to send daily summary email (24-hour format HH:MM)
+daily_summary_time = 09:00
+
+# Minimum price drop percentage to trigger alert
+minimum_price_drop_percent = 10
+
+# Maximum number of days to keep price history
+max_price_history_days = 90
+
+[concerts]
+# Format: event_id = max_price_threshold
+# Example entries (replace with real Ticketmaster event IDs):
+# 1234567890 = 150.00
+# 0987654321 = 75.00
+# 1122334455 = 200.00
+
+[logging]
+# Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+log_level = INFO
+
+# Maximum log file size in MB
+max_log_size_mb = 10
+
+# Number of log files to keep
+log_backup_count = 5
