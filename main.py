@@ -38,10 +38,58 @@ def main() -> None:
     logger.info("TixScanner starting up...")
     
     try:
-        # TODO: Import and initialize core components
-        # TODO: Load configuration
-        # TODO: Start price monitoring scheduler
-        logger.info("TixScanner initialized successfully")
+        # Import core components
+        from src.config_manager import ConfigManager
+        from src.price_monitor import PriceMonitor
+        from src.scheduler import MonitoringScheduler
+        from src.email_client import EmailClient
+        
+        # Load configuration
+        config = ConfigManager()
+        
+        # Initialize components
+        email_client = EmailClient()
+        price_monitor = PriceMonitor(
+            api_key=config.get_ticketmaster_api_key(),
+            email_client=email_client
+        )
+        
+        # Configure monitoring parameters
+        price_monitor.configure(
+            min_price_drop_percent=config.get_monitoring_config().get('minimum_price_drop_percent', 10.0),
+            check_frequency_hours=config.get_monitoring_config().get('check_frequency_hours', 2)
+        )
+        
+        # Test setup before starting
+        test_results = price_monitor.test_monitoring_setup()
+        if not test_results['ready_for_monitoring']:
+            logger.error("Monitoring setup test failed. Please check configuration.")
+            logger.error(f"Test results: {test_results}")
+            sys.exit(1)
+        
+        logger.info("All systems ready for monitoring")
+        
+        # Run monitoring tasks once
+        logger.info("Running initial price check...")
+        results = price_monitor.check_all_prices()
+        logger.info(f"Initial check complete: {results['prices_checked']} prices checked, "
+                   f"{results['alerts_sent']} alerts sent")
+        
+        # Optional: Start scheduler for continuous monitoring
+        # Uncomment these lines for continuous monitoring:
+        # scheduler = MonitoringScheduler(price_monitor)
+        # scheduler.start()
+        # logger.info("Monitoring scheduler started - running continuously")
+        # 
+        # # Keep running until interrupted
+        # try:
+        #     while True:
+        #         time.sleep(60)
+        # except KeyboardInterrupt:
+        #     logger.info("Stopping scheduler...")
+        #     scheduler.stop()
+        
+        logger.info("TixScanner run completed successfully")
         
     except KeyboardInterrupt:
         logger.info("Shutting down TixScanner...")

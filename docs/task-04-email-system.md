@@ -15,12 +15,23 @@ Implement the email notification system that sends price alerts and daily summar
 
 ### 1. Email Client Setup
 - [ ] Create `src/email_client.py` module
-- [ ] Implement Gmail SMTP configuration:
-  - [ ] SMTP server connection (smtp.gmail.com:587)
-  - [ ] Authentication with app password
-  - [ ] TLS encryption setup
-  - [ ] Connection testing function
-- [ ] Load email credentials from environment variables
+- [ ] Implement secure authentication options:
+  - [ ] **Option 1: OAuth2 with Gmail API (Recommended)**
+    - [ ] Google Cloud project setup
+    - [ ] Gmail API credentials (client_secret.json)
+    - [ ] OAuth2 flow for user consent
+    - [ ] Refresh token storage and management
+  - [ ] **Option 2: SMTP with OAuth2**
+    - [ ] SMTP server connection (smtp.gmail.com:587)
+    - [ ] OAuth2 SMTP authentication
+    - [ ] Access token refresh mechanism
+  - [ ] **Option 3: Alternative Email Services**
+    - [ ] SendGrid API integration
+    - [ ] Mailgun API integration
+    - [ ] AWS SES integration
+- [ ] TLS/SSL encryption setup
+- [ ] Connection testing function
+- [ ] Load credentials from secure configuration
 - [ ] Implement connection pooling for multiple emails
 
 ### 2. Chart Generation System
@@ -141,20 +152,31 @@ Implement the email notification system that sends price alerts and daily summar
 - Task 1: Project Setup (for configuration)
 - Task 2: Database Schema (for price history data)
 - `matplotlib` library
-- `smtplib` (built-in)
+- **Security Dependencies (choose one approach):**
+  - **OAuth2 Gmail API**: `google-api-python-client`, `google-auth-httplib2`, `google-auth-oauthlib`
+  - **Alternative Services**: `sendgrid`, `mailgun2`, or `boto3` (for AWS SES)
+- `smtplib` (built-in, if using SMTP)
 - `email.mime` (built-in)
-- Gmail app password
 
 ## Estimated Time
 5-7 hours
 
-## Notes
-- Use Gmail app passwords, not regular account passwords
+## Security Notes
+- **NEVER use App Passwords** - Google is phasing them out and they're less secure
+- **Recommended: OAuth2 with Gmail API** - Most secure, no password storage needed
+- **Alternative: Third-party services** - Often easier to set up and more reliable
+- **If using SMTP**: Only with OAuth2 authentication, never with passwords
+
+## Implementation Notes  
 - Test email rendering across different clients (Gmail, Outlook, Apple Mail)
 - Keep embedded images under 500KB each for deliverability
-- Implement proper error handling for SMTP failures
-- Consider email rate limits (Gmail: ~500 emails/day)
+- Implement proper error handling for API/SMTP failures
+- Consider email rate limits:
+  - Gmail API: 250 quota units per user per second
+  - SendGrid: Varies by plan (100 emails/day free tier)
+  - Mailgun: 5,000 emails/month free tier
 - Include unsubscribe options even for personal use
+- Store OAuth2 refresh tokens securely (encrypted or in secure credential store)
 
 ## Chart Specifications
 ```python
@@ -177,15 +199,67 @@ COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 📊 Daily Price Update - {date} ({num_concerts} concerts tracked)
 ```
 
+## Secure Email Setup Options
+
+### Option 1: Gmail API with OAuth2 (Recommended)
+```bash
+# 1. Install dependencies
+pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+# 2. Set up Google Cloud Project
+# - Go to https://console.cloud.google.com/
+# - Create new project or select existing
+# - Enable Gmail API
+# - Create OAuth2 credentials (Desktop application)
+# - Download client_secret.json
+
+# 3. Environment variables
+export GOOGLE_CLIENT_SECRET_FILE=/path/to/client_secret.json
+export GOOGLE_TOKEN_FILE=/path/to/token.json
+```
+
+### Option 2: SendGrid (Easiest Alternative)
+```bash
+# 1. Install dependencies
+pip install sendgrid
+
+# 2. Set up SendGrid account
+# - Sign up at https://sendgrid.com/ (free tier: 100 emails/day)
+# - Get API key from dashboard
+# - Verify sender identity
+
+# 3. Environment variables
+export SENDGRID_API_KEY=your_sendgrid_api_key
+export SENDER_EMAIL=your_verified_email@example.com
+```
+
+### Option 3: Mailgun
+```bash
+# 1. Install dependencies
+pip install mailgun2
+
+# 2. Set up Mailgun account
+# - Sign up at https://mailgun.com/ (free tier: 5,000 emails/month)
+# - Get API key and domain from dashboard
+
+# 3. Environment variables
+export MAILGUN_API_KEY=your_mailgun_api_key
+export MAILGUN_DOMAIN=your_domain.mailgun.org
+```
+
 ## Sample Usage
 ```python
 # Example usage after implementation
 from src.email_client import EmailClient
 from src.chart_generator import generate_price_chart
 
-# Send price alert
-email_client = EmailClient()
+# Send price alert (OAuth2 Gmail API)
+email_client = EmailClient(provider='gmail_api')
 chart_path = generate_price_chart("123456789", days=7)
+email_client.send_price_alert("123456789", 200.0, 150.0, chart_path)
+
+# Send price alert (SendGrid)
+email_client = EmailClient(provider='sendgrid')
 email_client.send_price_alert("123456789", 200.0, 150.0, chart_path)
 
 # Send daily summary
