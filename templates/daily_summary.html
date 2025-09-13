@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Daily Price Summary - {{ date }}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 700px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .header .emoji {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .header .date {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .summary-stats {
+            display: flex;
+            justify-content: space-around;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+            text-transform: uppercase;
+        }
+        .concert-list {
+            margin: 30px 0;
+        }
+        .concert-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            margin: 20px 0;
+            padding: 20px;
+            transition: box-shadow 0.2s;
+        }
+        .concert-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .concert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .concert-name {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 0;
+        }
+        .concert-venue {
+            color: #6c757d;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .price-badge {
+            display: inline-block;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 16px;
+            min-width: 80px;
+            text-align: center;
+        }
+        .price-up {
+            background: #fff5f5;
+            color: #dc3545;
+            border: 1px solid #f8d7da;
+        }
+        .price-down {
+            background: #e8f5e8;
+            color: #28a745;
+            border: 1px solid #c3e6cb;
+        }
+        .price-same {
+            background: #f8f9fa;
+            color: #6c757d;
+            border: 1px solid #e9ecef;
+        }
+        .price-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 15px 0;
+        }
+        .current-price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .threshold-status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .below-threshold {
+            background: #e8f5e8;
+            color: #28a745;
+        }
+        .above-threshold {
+            background: #fff5f5;
+            color: #dc3545;
+        }
+        .chart-container {
+            margin: 15px 0;
+            text-align: center;
+        }
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .concert-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .btn-outline {
+            background: white;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
+        .btn-outline:hover {
+            background: #f8f9fa;
+        }
+        .no-concerts {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+        .no-concerts .emoji {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 15px;
+        }
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .footer a {
+            color: #74b9ff;
+            text-decoration: none;
+        }
+        .tips-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        .tips-section h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+        }
+        .tip {
+            margin: 10px 0;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 480px) {
+            .container {
+                margin: 10px;
+                border-radius: 8px;
+            }
+            .header {
+                padding: 20px 15px;
+            }
+            .header h1 {
+                font-size: 24px;
+            }
+            .content {
+                padding: 20px 15px;
+            }
+            .summary-stats {
+                flex-wrap: wrap;
+                gap: 15px;
+            }
+            .stat {
+                flex: 1;
+                min-width: 80px;
+            }
+            .concert-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .price-details {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .concert-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="emoji">📊</span>
+            <h1>Daily Price Summary</h1>
+            <div class="date">{{ date }}</div>
+        </div>
+        
+        <div class="content">
+            <div class="summary-stats">
+                <div class="stat">
+                    <div class="stat-number">{{ total_concerts }}</div>
+                    <div class="stat-label">Concerts Tracked</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ price_drops }}</div>
+                    <div class="stat-label">Price Drops</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ below_threshold }}</div>
+                    <div class="stat-label">Below Threshold</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">${{ avg_savings }}</div>
+                    <div class="stat-label">Avg Savings</div>
+                </div>
+            </div>
+            
+            {% if concerts %}
+            <div class="concert-list">
+                {% for concert in concerts %}
+                <div class="concert-item">
+                    <div class="concert-header">
+                        <div>
+                            <h3 class="concert-name">{{ concert.name }}</h3>
+                            <div class="concert-venue">{{ concert.venue }} • {{ concert.date }}</div>
+                        </div>
+                        <div class="price-badge {{ concert.price_trend_class }}">
+                            {{ concert.price_change }}
+                        </div>
+                    </div>
+                    
+                    <div class="price-details">
+                        <div class="current-price">${{ concert.current_price }}</div>
+                        <div class="threshold-status {{ concert.threshold_class }}">
+                            {% if concert.below_threshold %}
+                                ✅ Below ${{ concert.threshold_price }}
+                            {% else %}
+                                ⏳ Above ${{ concert.threshold_price }}
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    {% if concert.chart_image %}
+                    <div class="chart-container">
+                        <img src="data:image/png;base64,{{ concert.chart_image }}" alt="Price Trend for {{ concert.name }}" />
+                    </div>
+                    {% endif %}
+                    
+                    <div class="concert-actions">
+                        <a href="{{ concert.purchase_url }}" class="btn btn-primary">🎫 View Tickets</a>
+                        <a href="#" class="btn btn-outline">📈 Price History</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-concerts">
+                <span class="emoji">🎵</span>
+                <h3>No Concerts Being Tracked</h3>
+                <p>Add events to your config.ini file to start monitoring prices</p>
+            </div>
+            {% endif %}
+            
+            {% if summary_chart %}
+            <div class="chart-container" style="margin: 40px 0;">
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">All Concerts Overview</h3>
+                <img src="data:image/png;base64,{{ summary_chart }}" alt="All Concerts Price Summary" />
+            </div>
+            {% endif %}
+            
+            <div class="tips-section">
+                <h3>💡 Today's Tips</h3>
+                <div class="tip">
+                    • <strong>Best Time to Buy:</strong> Prices often drop 1-2 weeks before the event
+                </div>
+                <div class="tip">
+                    • <strong>Price Alerts:</strong> You'll get instant notifications when prices drop below your thresholds
+                </div>
+                <div class="tip">
+                    • <strong>Multiple Shows:</strong> Check different dates - prices can vary significantly
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>
+                <strong>TixScanner</strong> - Your Personal Ticket Price Monitor
+                <br>
+                <small>
+                    Sent daily at {{ summary_time }} | 
+                    <a href="mailto:{{ user_email }}">Contact</a> | 
+                    <a href="#">Manage Settings</a>
+                </small>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
