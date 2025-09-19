@@ -98,6 +98,110 @@ def get_concert(event_id: str, db_path: Optional[str] = None) -> Optional[Concer
         return None
 
 
+def ensure_concert_exists(event_id: str, threshold_price: Decimal,
+                         db_path: Optional[str] = None) -> Optional[Concert]:
+    """
+    Ensure a concert exists in the database, creating it if necessary.
+
+    This function will:
+    1. Check if the concert exists in the database
+    2. If it exists, update the threshold price if different
+    3. If it doesn't exist, fetch details from API and create it
+
+    Args:
+        event_id: Ticketmaster event ID
+        threshold_price: Price threshold for alerts
+        db_path: Optional database path
+
+    Returns:
+        Concert instance if successful, None if failed
+    """
+    try:
+        # Check if concert already exists
+        existing_concert = get_concert(event_id, db_path)
+
+        if existing_concert:
+            # Update threshold price if different
+            if existing_concert.threshold_price != threshold_price:
+                logger.info(f"Updating threshold for {event_id}: ${existing_concert.threshold_price} → ${threshold_price}")
+                update_concert_threshold(event_id, threshold_price, db_path)
+                existing_concert.threshold_price = threshold_price
+
+            return existing_concert
+
+        # Concert doesn't exist, need to fetch details and create it
+        logger.info(f"Concert {event_id} not in database, fetching details from API...")
+
+        # We'll need to import this here to avoid circular imports
+        from .ticketmaster_api import TicketmasterAPI
+        from .config_manager import ConfigManager
+
+        # Get API key from config
+        config = ConfigManager()
+        api_key = config.get_ticketmaster_api_key()
+        api = TicketmasterAPI(api_key)
+
+        # Fetch event details
+        event_details = api.get_event_details(event_id)
+
+        if not event_details:
+            logger.error(f"Could not fetch details for event {event_id}")
+            return None
+
+        # Create concert from API data
+        concert = Concert(
+            event_id=event_id,
+            name=event_details.get('name', f'Event {event_id}'),
+            venue=event_details.get('_embedded', {}).get('venues', [{}])[0].get('name', 'Unknown Venue'),
+            event_date=None,  # We could parse this from API if needed
+            threshold_price=threshold_price
+        )
+
+        # Add to database
+        if add_concert(concert, db_path):
+            logger.info(f"Created new concert record: {concert.name}")
+            return concert
+        else:
+            logger.error(f"Failed to add concert {event_id} to database")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error ensuring concert {event_id} exists: {e}")
+        return None
+
+
+def update_concert_threshold(event_id: str, threshold_price: Decimal,
+                           db_path: Optional[str] = None) -> bool:
+    """
+    Update the threshold price for a concert.
+
+    Args:
+        event_id: Ticketmaster event ID
+        threshold_price: New threshold price
+        db_path: Optional database path
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        with get_db_transaction(db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE concerts SET threshold_price = ?, updated_at = ? WHERE event_id = ?",
+                (float(threshold_price), datetime.now().isoformat(), event_id)
+            )
+
+            if cursor.rowcount == 0:
+                logger.warning(f"No concert found with event_id: {event_id}")
+                return False
+
+            logger.debug(f"Updated threshold for {event_id}: ${threshold_price}")
+            return True
+
+    except Exception as e:
+        logger.error(f"Failed to update threshold for {event_id}: {e}")
+        return False
+
+
 def get_all_concerts(db_path: Optional[str] = None) -> List[Concert]:
     """
     Retrieve all concerts from the database.

@@ -37,6 +37,10 @@ class ConfigManager:
         """
         self.config_file = config_file or "config.ini"
         self.config = configparser.ConfigParser()
+
+        # Preserve case for option names (important for event IDs)
+        self.config.optionxform = str
+
         self._load_config()
         logger.info("Configuration manager initialized")
     
@@ -81,15 +85,16 @@ class ConfigManager:
     def get_email_config(self) -> Dict[str, Any]:
         """
         Get email configuration.
-        
+
         Returns:
             Dictionary with email settings
+
+        Note:
+            We now use Gmail OAuth2 authentication, so passwords are not needed.
+            Email configuration is primarily for recipient settings.
         """
-        # Note: We're now using OAuth2, so gmail_password is not needed
-        # But keeping for backwards compatibility
         return {
             'gmail_user': os.getenv('GMAIL_USER') or self.config.get('email', 'gmail_user', fallback=''),
-            'gmail_password': os.getenv('GMAIL_APP_PASSWORD') or self.config.get('email', 'gmail_password', fallback=''),
             'recipient': os.getenv('RECIPIENT_EMAIL') or self.config.get('email', 'recipient', fallback='')
         }
     
@@ -180,7 +185,47 @@ class ConfigManager:
             logger.error(f"Error parsing section configuration: {e}")
         
         return sections
-    
+
+    def get_section_thresholds_config(self) -> Dict[str, Dict[str, Decimal]]:
+        """
+        Get section-specific threshold configuration.
+
+        Returns:
+            Dictionary mapping event_id to section_name to threshold_price
+            Format: {event_id: {section_name: threshold_price}}
+        """
+        thresholds = {}
+
+        if not self.config.has_section('section_thresholds'):
+            logger.debug("No [section_thresholds] section found in configuration")
+            return thresholds
+
+        try:
+            for key, threshold_str in self.config.items('section_thresholds'):
+                try:
+                    # Parse event_id.section_name format
+                    if '.' in key:
+                        event_id, section_name = key.split('.', 1)
+                        threshold_price = Decimal(threshold_str)
+
+                        if event_id not in thresholds:
+                            thresholds[event_id] = {}
+                        thresholds[event_id][section_name] = threshold_price
+
+                        logger.debug(f"Event {event_id}, section '{section_name}': ${threshold_price}")
+                    else:
+                        logger.warning(f"Invalid section threshold key format: {key} (expected: event_id.section_name)")
+
+                except Exception as e:
+                    logger.error(f"Invalid section threshold for {key}: {threshold_str} ({e})")
+
+            logger.info(f"Loaded section thresholds for {len(thresholds)} events")
+
+        except Exception as e:
+            logger.error(f"Error parsing section thresholds configuration: {e}")
+
+        return thresholds
+
     def get_logging_config(self) -> Dict[str, Any]:
         """
         Get logging configuration.
@@ -264,9 +309,5 @@ class ConfigManager:
         if 'api' in config_dict and 'ticketmaster_key' in config_dict['api']:
             key = config_dict['api']['ticketmaster_key']
             config_dict['api']['ticketmaster_key'] = f"{'*' * (len(key) - 4)}{key[-4:]}" if len(key) > 4 else "****"
-        
-        if 'email' in config_dict and 'gmail_password' in config_dict['email']:
-            pwd = config_dict['email']['gmail_password']
-            config_dict['email']['gmail_password'] = "****" if pwd else ""
         
         return config_dict
