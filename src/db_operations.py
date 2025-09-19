@@ -299,6 +299,48 @@ def get_price_history(event_id: str, days: int = 30, db_path: Optional[str] = No
         return []
 
 
+def get_latest_section_price(event_id: str, section: str, db_path: Optional[str] = None) -> Optional[PriceHistory]:
+    """
+    Get the most recent price for a specific section of an event.
+
+    Args:
+        event_id: Ticketmaster event ID
+        section: Section name
+        db_path: Optional database path
+
+    Returns:
+        Most recent PriceHistory for the section or None
+    """
+    try:
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM price_history
+                WHERE event_id = ? AND section = ?
+                ORDER BY recorded_at DESC
+                LIMIT 1
+                """,
+                (event_id, section)
+            ).fetchone()
+
+            if row:
+                return PriceHistory(
+                    id=row['id'],
+                    event_id=row['event_id'],
+                    price=Decimal(str(row['price'])),
+                    section=row['section'],
+                    ticket_type=row['ticket_type'],
+                    availability=row['availability'],
+                    recorded_at=datetime.fromisoformat(row['recorded_at'])
+                )
+
+            return None
+
+    except Exception as e:
+        logger.error(f"Failed to get latest section price for {event_id}/{section}: {e}")
+        return None
+
+
 def get_latest_price(event_id: str, db_path: Optional[str] = None) -> Optional[PriceHistory]:
     """
     Get the most recent price for an event.
