@@ -9,8 +9,9 @@ import os
 import json
 import logging
 import pickle
+import base64
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -112,26 +113,108 @@ Security Notes:
         # Get email from environment if available
         email = os.getenv('GMAIL_USER', 'your.email')
         return instructions.format(email)
+
+    def _load_credentials_from_env(self) -> Optional[Credentials]:
+        """
+        Load Gmail credentials from environment variables.
+
+        Returns:
+            Credentials object or None if not available or invalid
+        """
+        try:
+            token_json = os.getenv('GMAIL_TOKEN_JSON')
+            if not token_json:
+                return None
+
+            # Parse the JSON string
+            token_data = json.loads(token_json)
+
+            # Create credentials from the token data
+            creds = Credentials(
+                token=token_data.get('token'),
+                refresh_token=token_data.get('refresh_token'),
+                token_uri=token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
+                client_id=token_data.get('client_id'),
+                client_secret=token_data.get('client_secret'),
+                scopes=token_data.get('scopes', SCOPES)
+            )
+
+            return creds
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.error(f"Failed to parse GMAIL_TOKEN_JSON environment variable: {e}")
+            return None
+
+    def _save_credentials_to_env_format(self, creds: Credentials) -> Dict[str, Any]:
+        """
+        Convert credentials to a format suitable for environment variables.
+
+        Args:
+            creds: Google OAuth2 credentials
+
+        Returns:
+            Dictionary that can be JSON serialized for environment variables
+        """
+        return {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+
+    def _get_client_config(self):
+        """
+        Get client configuration from environment or file.
+
+        Returns:
+            Either a file path (str) or a config dictionary, or None
+        """
+        # Check for environment variable first
+        if os.getenv('GMAIL_CREDENTIALS_JSON'):
+            try:
+                config_json = os.getenv('GMAIL_CREDENTIALS_JSON')
+                config = json.loads(config_json)
+                logger.info("Using client credentials from environment")
+                return config
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse GMAIL_CREDENTIALS_JSON: {e}")
+
+        # Fall back to file
+        if os.path.exists(self.credentials_file):
+            logger.info("Using client credentials from file")
+            return self.credentials_file
+
+        return None
     
     def authenticate(self) -> bool:
         """
         Authenticate with Gmail API using OAuth2.
-        
+
+        Supports both environment variable and file-based authentication.
+
         Returns:
             True if authentication successful, False otherwise
-            
+
         Raises:
             GmailAuthError: If authentication fails
         """
         try:
             creds = None
-            
-            # Load existing token if available
-            if os.path.exists(self.token_file):
+
+            # First check for environment variables (for Codespaces deployment)
+            if os.getenv('GMAIL_TOKEN_JSON'):
+                creds = self._load_credentials_from_env()
+                if creds:
+                    logger.info("Loaded credentials from environment variables")
+
+            # Fall back to file-based token if no env var
+            elif os.path.exists(self.token_file):
                 try:
                     with open(self.token_file, 'rb') as token:
                         creds = pickle.load(token)
-                        logger.debug("Loaded existing token")
+                        logger.debug("Loaded existing token from file")
                 except Exception as e:
                     logger.warning(f"Failed to load existing token: {e}")
                     # Delete corrupted token file
@@ -149,17 +232,24 @@ Security Notes:
                         creds = None
                 
                 if not creds:
-                    # Check if credentials file exists
-                    if not os.path.exists(self.credentials_file):
+                    # Try to get credentials from environment or file
+                    client_config = self._get_client_config()
+                    if not client_config:
                         raise GmailAuthError(
-                            f"Credentials file not found: {self.credentials_file}\n\n"
+                            f"Credentials not found.\n\n"
                             f"Please follow the setup instructions:\n{self.setup_instructions()}"
                         )
-                    
+
                     try:
                         logger.info("Starting OAuth2 flow...")
-                        flow = InstalledAppFlow.from_client_secrets_file(
-                            self.credentials_file, SCOPES)
+                        if isinstance(client_config, str):
+                            # File path
+                            flow = InstalledAppFlow.from_client_secrets_file(
+                                client_config, SCOPES)
+                        else:
+                            # Dictionary from environment
+                            flow = InstalledAppFlow.from_client_config(
+                                client_config, SCOPES)
                         
                         # Run local server for OAuth callback
                         creds = flow.run_local_server(
