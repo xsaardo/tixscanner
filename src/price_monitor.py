@@ -20,7 +20,7 @@ from .section_scraper import SectionBasedScraper
 from .models import Concert, PriceHistory
 from .db_operations import (
     get_all_concerts, get_latest_price, add_price_record,
-    get_price_history, log_email
+    get_price_history, log_email, ensure_concert_exists
 )
 from .config_manager import ConfigManager
 
@@ -85,18 +85,12 @@ class PriceMonitor:
     def _load_section_thresholds(self):
         """Load section-specific thresholds from configuration."""
         try:
-            if self.config_manager.config.has_section('section_thresholds'):
-                thresholds_config = self.config_manager.config.items('section_thresholds')
-                for key, threshold_str in thresholds_config:
-                    # Parse event_id.section_name format
-                    if '.' in key:
-                        event_id, section_name = key.split('.', 1)
-                        if event_id not in self.section_thresholds:
-                            self.section_thresholds[event_id] = {}
-                        self.section_thresholds[event_id][section_name] = Decimal(threshold_str)
-                        logger.info(f"Loaded threshold for {event_id}/{section_name}: ${threshold_str}")
+            self.section_thresholds = self.config_manager.get_section_thresholds_config()
+            total_sections = sum(len(sections) for sections in self.section_thresholds.values())
+            logger.info(f"Loaded section thresholds for {len(self.section_thresholds)} events ({total_sections} sections)")
         except Exception as e:
             logger.warning(f"Could not load section thresholds: {e}")
+            self.section_thresholds = {}
 
     def configure(self, min_price_drop_percent: float = 10.0,
                  check_frequency_hours: int = 2) -> None:
@@ -114,16 +108,19 @@ class PriceMonitor:
     
     def check_all_prices(self) -> Dict[str, Any]:
         """
-        Check prices for all tracked concerts.
-        
+        Check prices for all configured concerts.
+
+        This function is configuration-driven - it monitors only the concerts
+        defined in config.ini, ensuring they exist in the database first.
+
         Returns:
             Dictionary with monitoring results and statistics
         """
-        logger.info("Starting price check for all concerts")
-        
-        concerts = get_all_concerts(self.db_path)
-        if not concerts:
-            logger.info("No concerts to monitor")
+        logger.info("Starting configuration-driven price check")
+
+        # Get configured concerts from config.ini
+        if not self.config_manager:
+            logger.error("No configuration manager available")
             return {
                 'total_concerts': 0,
                 'prices_checked': 0,
@@ -131,39 +128,69 @@ class PriceMonitor:
                 'errors': 0,
                 'results': []
             }
-        
+
+        configured_concerts = self.config_manager.get_concert_config()
+        if not configured_concerts:
+            logger.info("No concerts configured for monitoring")
+            return {
+                'total_concerts': 0,
+                'prices_checked': 0,
+                'alerts_sent': 0,
+                'errors': 0,
+                'results': []
+            }
+
+        logger.info(f"Found {len(configured_concerts)} configured concerts to monitor")
+
         results = {
-            'total_concerts': len(concerts),
+            'total_concerts': len(configured_concerts),
             'prices_checked': 0,
             'alerts_sent': 0,
             'errors': 0,
             'results': []
         }
-        
-        for concert in concerts:
+
+        # Process each configured concert
+        for event_id, threshold_price in configured_concerts.items():
             try:
+                # Ensure the concert exists in the database (create if needed)
+                concert = ensure_concert_exists(event_id, threshold_price, self.db_path)
+
+                if not concert:
+                    logger.error(f"Could not ensure concert {event_id} exists in database")
+                    results['errors'] += 1
+                    results['results'].append({
+                        'event_id': event_id,
+                        'error': 'Could not ensure concert exists in database',
+                        'price_found': False,
+                        'alert_sent': False
+                    })
+                    continue
+
+                # Check price for this concert
                 result = self._check_concert_price(concert)
                 results['results'].append(result)
-                
+
                 if result['price_found']:
                     results['prices_checked'] += 1
-                    
+
                 if result['alert_sent']:
                     results['alerts_sent'] += 1
-                    
+
             except Exception as e:
-                logger.error(f"Error checking price for {concert.name}: {e}")
+                logger.error(f"Error processing concert {event_id}: {e}")
                 results['errors'] += 1
                 results['results'].append({
-                    'concert': concert,
+                    'event_id': event_id,
                     'error': str(e),
                     'price_found': False,
                     'alert_sent': False
                 })
-        
-        logger.info(f"Price check completed: {results['prices_checked']}/{results['total_concerts']} "
-                   f"prices found, {results['alerts_sent']} alerts sent, {results['errors']} errors")
-        
+
+        logger.info(f"Configuration-driven price check completed: "
+                   f"{results['prices_checked']}/{results['total_concerts']} prices found, "
+                   f"{results['alerts_sent']} alerts sent, {results['errors']} errors")
+
         return results
     
     def _check_concert_price(self, concert: Concert) -> Dict[str, Any]:

@@ -16,7 +16,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchElementException
+from selenium.common.exceptions import (
+    TimeoutException, WebDriverException, NoSuchElementException,
+    ElementNotInteractableException, StaleElementReferenceException,
+    ElementClickInterceptedException
+)
 from webdriver_manager.chrome import ChromeDriverManager
 import re
 
@@ -148,17 +152,27 @@ class SectionBasedScraper:
                 logger.warning("Interactive map not found, trying alternative selectors")
 
             # Process each section
+            successful_sections = []
+            failed_sections = []
+
             for section_name in sections:
+                logger.debug(f"Processing section: {section_name}")
                 section_data = self._extract_section_price(section_name)
                 if section_data:
                     result['sections'][section_name] = section_data
+                    successful_sections.append(section_name)
+                else:
+                    failed_sections.append(section_name)
 
-            if result['sections']:
+            # Log summary
+            if successful_sections:
                 result['success'] = True
-                logger.info(f"Successfully scraped {len(result['sections'])} sections")
+                logger.info(f"Successfully scraped {len(successful_sections)} sections: {successful_sections}")
+                if failed_sections:
+                    logger.info(f"Skipped {len(failed_sections)} sections: {failed_sections}")
             else:
                 result['error'] = "No section prices found"
-                logger.warning("No section prices found")
+                logger.warning(f"No section prices found. All {len(failed_sections)} sections failed: {failed_sections}")
 
             return result
 
@@ -254,8 +268,12 @@ class SectionBasedScraper:
                 logger.warning(f"No price found in popup for {section_name}")
                 return None
 
+        except (ElementNotInteractableException, StaleElementReferenceException, ElementClickInterceptedException):
+            logger.warning(f"Section '{section_name}' exists but is not interactable - skipping")
+            return None
+
         except Exception as e:
-            logger.error(f"Error extracting price for section {section_name}: {e}")
+            logger.warning(f"Section '{section_name}' could not be processed - skipping")
             return None
 
     def _extract_popup_price(self) -> Optional[Dict[str, Any]]:

@@ -7,8 +7,9 @@ ticketmaster_key = YOUR_TICKETMASTER_API_KEY_HERE
 
 [email]
 # Gmail settings for notifications
+# Note: We now use OAuth2 authentication - no passwords needed!
+# Just set up gmail_credentials.json and the app handles authentication
 gmail_user = your.email@gmail.com
-gmail_password = YOUR_GMAIL_APP_PASSWORD_HERE
 recipient = your.email@gmail.com
 
 [monitoring]
