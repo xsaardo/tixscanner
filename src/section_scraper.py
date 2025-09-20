@@ -142,6 +142,9 @@ class SectionBasedScraper:
             if "Access to this page has been denied" in self.driver.page_source:
                 raise SectionScrapingError("Access denied - bot detection")
 
+            # Handle initial popup/consent dialog
+            self._handle_initial_popup()
+
             # Wait for interactive map to load
             try:
                 self.wait.until(
@@ -193,6 +196,77 @@ class SectionBasedScraper:
             logger.error(error_msg)
             result['error'] = error_msg
             return result
+
+    def _handle_initial_popup(self) -> None:
+        """
+        Handle the initial popup/consent dialog that requires clicking "Accept".
+
+        Ticketmaster often shows a popup on page load that needs to be dismissed
+        before any interactions can take place.
+        """
+        logger.debug("Checking for and handling initial popup")
+        try:
+            # Look for common "Accept" button patterns
+            accept_selectors = [
+                'button[data-testid*="accept"]',
+                'button[aria-label*="accept"]',
+                'button[aria-label*="Accept"]',
+                '[data-bdd*="accept"]',
+                'button.accept',
+                '#accept-button',
+                'button[id*="accept"]',
+                'button[class*="accept"]',
+                'button[data-qa*="accept"]',
+                'button[type="button"]'  # Generic button selector as fallback
+            ]
+
+            for selector in accept_selectors:
+                try:
+                    # Wait up to 5 seconds for the Accept button to appear
+                    accept_button = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                    logger.debug(f"Found Accept button with selector: {selector}")
+                    accept_button.click()
+                    logger.info("Successfully clicked Accept button")
+                    # Wait for popup to dismiss
+                    time.sleep(2)
+                    return
+                except (TimeoutException, NoSuchElementException):
+                    continue
+
+            # Fallback: Try XPath for text-based matching
+            try:
+                accept_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'ACCEPT')]")
+                if accept_button.is_enabled() and accept_button.is_displayed():
+                    accept_button.click()
+                    logger.info("Successfully clicked Accept button via XPath")
+                    time.sleep(2)
+                    return
+            except NoSuchElementException:
+                pass
+
+            # Look for "Accept" text in modals/popups
+            try:
+                # Find any clickable element containing "Accept"
+                accept_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Accept') and (self::button or self::a or self::div[@role='button'] or contains(@class, 'clickable'))]")
+                for elem in accept_elements:
+                    if elem.is_displayed() and elem.is_enabled():
+                        try:
+                            elem.click()
+                            logger.info("Successfully clicked Accept element")
+                            time.sleep(2)
+                            return
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            logger.debug("No Accept popup found or already dismissed")
+
+        except Exception as e:
+            logger.warning(f"Error handling popup: {e}")
+            # Continue anyway - popup might not be present
 
     def _extract_section_price(self, section_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -337,10 +411,11 @@ class SectionBasedScraper:
 
             # Extract price from popup text
             price_patterns = [
+                r'\$([0-9]+(?:\.[0-9]{2})?)\+?',  # $99.99 or $99.99+
                 r'\$([0-9]+(?:\.[0-9]{2})?)',  # $99.99
                 r'([0-9]+(?:\.[0-9]{2})?)\s*(?:USD|dollars?)',  # 99.99 USD
-                r'(?:from|starting at|as low as)\s*\$([0-9]+(?:\.[0-9]{2})?)',  # from $99.99
-                r'Price:\s*\$([0-9]+(?:\.[0-9]{2})?)',  # Price: $99.99
+                r'(?:from|starting at|as low as)\s*\$([0-9]+(?:\.[0-9]{2})?)\+?',  # from $99.99+
+                r'Price:\s*\$([0-9]+(?:\.[0-9]{2})?)\+?',  # Price: $99.99+
             ]
 
             for pattern in price_patterns:

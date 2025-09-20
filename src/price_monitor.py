@@ -203,7 +203,7 @@ class PriceMonitor:
         Returns:
             Dictionary with check results
         """
-        logger.debug(f"Checking price for {concert.name}")
+        logger.info(f"Checking price for {concert.name}")
         
         result = {
             'concert': concert,
