@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS concerts (
     name TEXT NOT NULL,
     venue TEXT,
     event_date DATE,
+    url TEXT,
     threshold_price DECIMAL(10,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
