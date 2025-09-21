@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
 import re
 from jinja2 import Environment, FileSystemLoader
 
@@ -322,7 +323,7 @@ class EmailClient:
             message = MIMEMultipart('alternative')
             message['to'] = recipient
             message['from'] = sender_email
-            message['subject'] = subject
+            message['subject'] = Header(subject, 'utf-8')
             
             # Add HTML content
             html_part = MIMEText(html_content, 'html')

@@ -152,8 +152,8 @@ def ensure_concert_exists(event_id: str, threshold_price: Decimal,
         concert = Concert(
             event_id=event_id,
             name=event_details.get('name', f'Event {event_id}'),
-            venue=event_details.get('_embedded', {}).get('venues', [{}])[0].get('name', 'Unknown Venue'),
-            event_date=None,  # We could parse this from API if needed
+            venue=event_details.get('venue', 'Unknown Venue'),
+            event_date=datetime.strptime(event_details['date'], "%Y-%m-%d").date() if event_details.get('date') else None,
             threshold_price=threshold_price
         )
 
