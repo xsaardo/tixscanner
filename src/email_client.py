@@ -155,7 +155,7 @@ class EmailClient:
                 'price_change': f"${price_diff:.0f} ({price_change_percent:.1f}%)",
                 'threshold_price': f"{concert.threshold_price:.0f}",
                 'chart_image': chart_image,
-                'purchase_url': f"https://www.ticketmaster.com/search?q={concert.name.replace(' ', '+')}",
+                'purchase_url': concert.url or f"https://www.ticketmaster.com/search?q={concert.name.replace(' ', '+')}",
                 'timestamp': datetime.now().strftime('%B %d, %Y at %I:%M %p'),
                 'user_email': self.authenticator.get_user_email()
             }
@@ -249,7 +249,7 @@ class EmailClient:
                         'below_threshold': is_below_threshold,
                         'threshold_class': 'below-threshold' if is_below_threshold else 'above-threshold',
                         'chart_image': chart_image,
-                        'purchase_url': f"https://www.ticketmaster.com/search?q={concert.name.replace(' ', '+')}"
+                        'purchase_url': concert.url or f"https://www.ticketmaster.com/search?q={concert.name.replace(' ', '+')}"
                     })
             
             # Generate summary chart

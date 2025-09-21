@@ -36,15 +36,16 @@ def add_concert(concert: Concert, db_path: Optional[str] = None) -> bool:
         with get_db_transaction(db_path) as conn:
             conn.execute(
                 """
-                INSERT INTO concerts 
-                (event_id, name, venue, event_date, threshold_price, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO concerts
+                (event_id, name, venue, event_date, url, threshold_price, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     concert.event_id,
                     concert.name,
                     concert.venue,
                     concert.event_date,
+                    concert.url,
                     float(concert.threshold_price),
                     concert.created_at,
                     concert.updated_at
@@ -86,6 +87,7 @@ def get_concert(event_id: str, db_path: Optional[str] = None) -> Optional[Concer
                     name=row['name'],
                     venue=row['venue'],
                     event_date=datetime.strptime(row['event_date'], "%Y-%m-%d").date() if row['event_date'] else None,
+                    url=row['url'],
                     threshold_price=Decimal(str(row['threshold_price'])),
                     created_at=datetime.fromisoformat(row['created_at']),
                     updated_at=datetime.fromisoformat(row['updated_at'])
@@ -154,6 +156,7 @@ def ensure_concert_exists(event_id: str, threshold_price: Decimal,
             name=event_details.get('name', f'Event {event_id}'),
             venue=event_details.get('venue', 'Unknown Venue'),
             event_date=datetime.strptime(event_details['date'], "%Y-%m-%d").date() if event_details.get('date') else None,
+            url=event_details.get('url'),
             threshold_price=threshold_price
         )
 
@@ -226,6 +229,7 @@ def get_all_concerts(db_path: Optional[str] = None) -> List[Concert]:
                     name=row['name'],
                     venue=row['venue'],
                     event_date=datetime.strptime(row['event_date'], "%Y-%m-%d").date() if row['event_date'] else None,
+                    url=row['url'],
                     threshold_price=Decimal(str(row['threshold_price'])),
                     created_at=datetime.fromisoformat(row['created_at']),
                     updated_at=datetime.fromisoformat(row['updated_at'])

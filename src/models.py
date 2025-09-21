@@ -45,6 +45,7 @@ class Concert:
     threshold_price: Decimal
     venue: Optional[str] = None
     event_date: Optional[date] = None
+    url: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     
@@ -112,6 +113,7 @@ class Concert:
             'name': self.name,
             'venue': self.venue,
             'event_date': self.event_date.isoformat() if self.event_date else None,
+            'url': self.url,
             'threshold_price': float(self.threshold_price),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
