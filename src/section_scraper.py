@@ -323,16 +323,32 @@ class SectionBasedScraper:
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", section_element)
             time.sleep(1)
 
-            # Hover over the section
-            actions = ActionChains(self.driver)
-            actions.move_to_element(section_element).perform()
-            logger.debug(f"Hovering over section: {section_name}")
+            # Try hovering with retry mechanism
+            price_data = None
+            max_retries = 2
 
-            # Wait for popup to appear
-            time.sleep(2)
+            for attempt in range(max_retries):
+                try:
+                    # Hover over the section
+                    actions = ActionChains(self.driver)
+                    actions.move_to_element(section_element).perform()
+                    logger.debug(f"Hovering over section: {section_name} (attempt {attempt + 1})")
 
-            # Extract price from popup
-            price_data = self._extract_popup_price()
+                    # Wait for popup to appear with explicit wait
+                    price_data = self._wait_for_popup_and_extract_price(section_name)
+
+                    if price_data:
+                        break  # Success, exit retry loop
+                    elif attempt < max_retries - 1:
+                        logger.debug(f"No popup found, retrying hover for {section_name}")
+                        # Move mouse away and wait before retry
+                        actions.move_by_offset(50, 50).perform()
+                        time.sleep(1)
+
+                except Exception as e:
+                    logger.debug(f"Hover attempt {attempt + 1} failed for {section_name}: {e}")
+                    if attempt == max_retries - 1:
+                        raise
 
             if price_data:
                 price_data['section'] = section_name
@@ -348,6 +364,136 @@ class SectionBasedScraper:
 
         except Exception as e:
             logger.warning(f"Section '{section_name}' could not be processed - skipping")
+            return None
+
+    def _wait_for_popup_and_extract_price(self, section_name: str, max_wait: int = 5) -> Optional[Dict[str, Any]]:
+        """
+        Wait for popup to appear after hover and extract price information.
+
+        Args:
+            section_name: Name of the section being hovered
+            max_wait: Maximum seconds to wait for popup
+
+        Returns:
+            Dictionary with price information or None if not found
+        """
+        try:
+            logger.debug(f"Waiting for popup to appear for section: {section_name}")
+
+            # Common popup selectors to wait for
+            popup_selectors = [
+                '.tooltip',
+                '.popover',
+                '.popup',
+                '[role="tooltip"]',
+                '.price-tooltip',
+                '.section-tooltip',
+                '.hover-popup',
+                '.map-tooltip',
+                '[class*="tooltip"]',
+                '[class*="popup"]',
+                '[class*="popover"]'
+            ]
+
+            popup_element = None
+
+            # Try each selector with explicit wait
+            for selector in popup_selectors:
+                try:
+                    # Wait for popup to become visible
+                    popup_element = WebDriverWait(self.driver, max_wait).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+
+                    # Additional check that it's actually visible and has text
+                    if popup_element.is_displayed() and popup_element.text.strip():
+                        logger.debug(f"Found popup using selector: {selector}")
+                        break
+                    else:
+                        popup_element = None
+
+                except TimeoutException:
+                    continue
+                except Exception:
+                    continue
+
+            # Fallback: Wait for any visible overlay with position absolute/fixed
+            if not popup_element:
+                try:
+                    logger.debug("Trying fallback overlay detection...")
+                    WebDriverWait(self.driver, max_wait).until(
+                        lambda driver: any(
+                            elem.is_displayed() and elem.text.strip()
+                            for elem in driver.find_elements(By.XPATH,
+                                "//*[contains(@style, 'position: absolute') or contains(@style, 'position: fixed')]")
+                        )
+                    )
+
+                    # Now find the actual overlay
+                    overlays = self.driver.find_elements(By.XPATH,
+                        "//*[contains(@style, 'position: absolute') or contains(@style, 'position: fixed')]")
+                    for overlay in overlays:
+                        if overlay.is_displayed() and overlay.text.strip():
+                            popup_element = overlay
+                            logger.debug("Found popup using overlay detection")
+                            break
+
+                except TimeoutException:
+                    logger.debug(f"Timeout waiting for popup for section {section_name}")
+                    return None
+
+            if popup_element:
+                # Extract price from the popup
+                return self._extract_price_from_element(popup_element)
+            else:
+                logger.warning(f"No popup found for section {section_name} after {max_wait}s wait")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Error waiting for popup for section {section_name}: {e}")
+            return None
+
+    def _extract_price_from_element(self, popup_element) -> Optional[Dict[str, Any]]:
+        """
+        Extract price information from a popup element.
+
+        Args:
+            popup_element: WebElement containing the popup
+
+        Returns:
+            Dictionary with price information or None if not found
+        """
+        try:
+            # Get popup text
+            popup_text = popup_element.text
+            logger.debug(f"Popup text: {popup_text}")
+
+            # Extract price from popup text
+            price_patterns = [
+                r'\$([0-9]+(?:\.[0-9]{2})?)\+?',  # $99.99 or $99.99+
+                r'\$([0-9]+(?:\.[0-9]{2})?)',  # $99.99
+                r'([0-9]+(?:\.[0-9]{2})?)\s*(?:USD|dollars?)',  # 99.99 USD
+                r'(?:from|starting at|as low as)\s*\$([0-9]+(?:\.[0-9]{2})?)\+?',  # from $99.99+
+                r'Price:\s*\$([0-9]+(?:\.[0-9]{2})?)\+?',  # Price: $99.99+
+            ]
+
+            for pattern in price_patterns:
+                match = re.search(pattern, popup_text, re.IGNORECASE)
+                if match:
+                    price = float(match.group(1))
+                    logger.debug(f"Extracted price: ${price}")
+
+                    return {
+                        'price': price,
+                        'text': popup_text,
+                        'currency': 'USD'
+                    }
+
+            logger.debug("No price found in popup text")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error extracting price from popup: {e}")
             return None
 
     def _extract_popup_price(self) -> Optional[Dict[str, Any]]:
