@@ -143,16 +143,35 @@ class ChartGenerator:
         # Group by section if multiple sections exist
         sections = df['section'].unique()
         
-        # Plot price lines for each section
-        colors_cycle = [COLORS['primary'], COLORS['secondary'], COLORS['success'], COLORS['danger']]
+        # Plot price lines for each section with distinct colors
+        colors_cycle = [
+            COLORS['primary'],    # Blue
+            COLORS['secondary'],  # Purple
+            COLORS['success'],    # Orange
+            COLORS['danger'],     # Red
+            '#2ECC71',           # Green
+            '#E74C3C',           # Bright Red
+            '#F39C12',           # Golden Orange
+            '#8E44AD',           # Deep Purple
+            '#16A085',           # Teal
+            '#D35400',           # Dark Orange
+            '#7F8C8D',           # Gray
+            '#E67E22',           # Carrot Orange
+        ]
         
+        # Different line styles for additional distinction
+        line_styles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-', '--', '-.', ':']
+        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', '+', 'x']
+
         for i, section in enumerate(sections):
             section_data = df[df['section'] == section].sort_values('date')
             color = colors_cycle[i % len(colors_cycle)]
-            
-            ax.plot(section_data['date'], section_data['price'], 
-                   color=color, linewidth=2.5, marker='o', markersize=4,
-                   label=section, alpha=0.8)
+            line_style = line_styles[i % len(line_styles)]
+            marker = markers[i % len(markers)]
+
+            ax.plot(section_data['date'], section_data['price'],
+                   color=color, linewidth=2.5, marker=marker, markersize=5,
+                   linestyle=line_style, label=section, alpha=0.8)
         
         # Add threshold line
         threshold_price = float(concert.threshold_price)
