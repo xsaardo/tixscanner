@@ -444,8 +444,8 @@ class PriceMonitor:
                 pricing_data = self.scraper.get_cheapest_sections(event_url, section_count=1)
             
             if pricing_data['success'] and pricing_data.get('min_price'):
-                # Return general admission with the min price if no specific sections
-                return {'General': Decimal(str(pricing_data['min_price']))}
+                # Return All sections with the min price if no specific sections
+                return {'All sections': Decimal(str(pricing_data['min_price']))}
             else:
                 logger.debug(f"Web scraping failed for {event_id}: {pricing_data.get('error', 'No pricing data')}")
                 return {}
