@@ -45,6 +45,15 @@ This script will:
 2. Navigate to: **Settings > Secrets and variables > Codespaces**
 3. Add these repository secrets:
 
+### Required Secret: TICKETMASTER_API_KEY
+
+Add your Ticketmaster API key for price monitoring:
+
+- **Name**: `TICKETMASTER_API_KEY`
+- **Value**: Your actual Ticketmaster API key (e.g., `aBc123XyZ789...`)
+
+The application will automatically load this via environment variables using the existing configuration in `src/config_manager.py`.
+
 ### Required Secret: GMAIL_TOKEN_JSON
 ```json
 {
@@ -109,10 +118,18 @@ Environment Variables (Codespaces) → Local Files → OAuth Flow
 
 | Variable | Description | Required |
 |----------|-------------|----------|
+| `TICKETMASTER_API_KEY` | Ticketmaster API key for price monitoring | Yes |
 | `GMAIL_TOKEN_JSON` | OAuth tokens with refresh token | Yes |
 | `GMAIL_CREDENTIALS_JSON` | Client credentials from Google Cloud | Optional* |
 
 *Optional if tokens include client_id and client_secret
+
+### API Key Priority
+
+The application loads the Ticketmaster API key using this priority:
+1. **Environment Variable**: `TICKETMASTER_API_KEY` (Codespaces secret)
+2. **Config File**: `config.ini` [api] section (local development)
+3. **Error**: Throws ConfigError if neither is configured
 
 ## Security Notes
 
@@ -121,7 +138,53 @@ Environment Variables (Codespaces) → Local Files → OAuth Flow
 3. **Token rotation**: Refresh tokens have long expiration but can be revoked
 4. **Scope limitation**: Tokens only have Gmail send/compose permissions
 
+## Testing Configuration
+
+### Verify API Key Setup
+
+After setting up Codespaces, test that both API keys are configured correctly:
+
+```bash
+# In Codespaces terminal
+python3 -c "
+from src.config_manager import ConfigManager
+config = ConfigManager()
+
+# Test Ticketmaster API key
+try:
+    api_key = config.get_ticketmaster_api_key()
+    print(f'✅ Ticketmaster API key loaded: {api_key[:8]}...')
+except Exception as e:
+    print(f'❌ Ticketmaster API key error: {e}')
+
+# Test email configuration
+try:
+    email_config = config.get_email_config()
+    print(f'✅ Email config loaded: {email_config}')
+except Exception as e:
+    print(f'❌ Email config error: {e}')
+"
+```
+
+### Test Full Application Setup
+
+```bash
+# Run setup test
+python3 main.py --mode check
+```
+
+This should:
+- ✅ Load both API configurations successfully
+- ✅ Authenticate with Gmail using environment variables
+- ✅ Perform a single price check
+- ✅ Send alerts if any prices are below threshold
+
 ## Troubleshooting
+
+### API Key Configuration Failed
+- Verify `TICKETMASTER_API_KEY` is set as a Codespaces secret
+- Check that the API key value doesn't have extra spaces or characters
+- Ensure the secret name matches exactly: `TICKETMASTER_API_KEY`
 
 ### Authentication Failed
 - Verify `GMAIL_TOKEN_JSON` is correctly formatted JSON
@@ -162,13 +225,37 @@ For continuous monitoring in Codespaces:
 - **Always-on monitoring**: May consume hours quickly
 - **Alternative**: Use GitHub Actions with scheduled workflows
 
+## Complete Setup Summary
+
+### Required Codespaces Secrets
+
+Set up these two secrets in **Settings > Secrets and variables > Codespaces**:
+
+1. **TICKETMASTER_API_KEY**
+   - Your Ticketmaster API key for price monitoring
+   - Example: `aBc123XyZ789...`
+
+2. **GMAIL_TOKEN_JSON**
+   - Complete OAuth token JSON from `extract_gmail_tokens.py`
+   - Includes refresh token for automatic authentication
+
+### Deployment Checklist
+
+- [ ] Extract Gmail tokens locally with `extract_gmail_tokens.py`
+- [ ] Set both Codespaces secrets (TICKETMASTER_API_KEY, GMAIL_TOKEN_JSON)
+- [ ] Create Codespace with **Write** permissions for database persistence
+- [ ] Run `./deploy/setup_codespaces.sh` in Codespace
+- [ ] Test configuration with `python3 main.py --mode check`
+- [ ] Start continuous monitoring with `screen -S tixscanner && python3 main.py`
+
 ## Migration from Local
 
 If you've been running locally and want to switch to Codespaces:
 
-1. Run `extract_gmail_tokens.py` locally
-2. Set up Codespaces secrets
+1. Run `extract_gmail_tokens.py` locally to get tokens
+2. Set up both Codespaces secrets (API key + Gmail tokens)
 3. Push any local changes to GitHub
-4. Create Codespace and run
+4. Create Codespace with Write permissions
+5. Run setup script and start monitoring
 
 The same configuration files (`config.ini`) work in both environments.
