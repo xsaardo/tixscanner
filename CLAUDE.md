@@ -2,7 +2,10 @@
 - use @docs/specs.md for current status and next steps
 
 # Bash commands
-- python main.py: Run the ticket tracker
+- python main.py: Run continuous ticket tracking (default)
+- python main.py --mode check: Run single price check
+- python main.py --mode summary: Send daily summary only
+- python main.py --mode continuous: Run continuous monitoring (same as default)
 - python -m pytest: Run tests (when implemented)
 - pip install -r requirements.txt: Install dependencies
 
