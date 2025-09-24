@@ -3,269 +3,514 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚨 Price Drop Alert - {{  concert_name }}</title>
+    <title>🚨 Price Drop Alert - {{ concert_name }}</title>
     <style>
+        /* Email-compatible minimal design */
+
         body {
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            color: #2c3e50;
-            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f9fafb;
+            color: #1d1d1f;
+            line-height: 1.5;
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            padding: 24px;
         }
-        .container {
+
+        .email-container {
             max-width: 600px;
-            margin: 20px auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 24px;
             overflow: hidden;
+            box-shadow: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e5e7eb;
         }
+
+        /* Header Section */
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
             text-align: center;
+            padding: 48px 32px;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+            border-bottom: 1px solid #e5e7eb;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 700;
+
+        .alert-badge {
+            display: inline-block;
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 24px;
+            border: 1px solid #fecaca;
         }
-        .header .emoji {
-            font-size: 48px;
-            display: block;
-            margin-bottom: 10px;
+
+        .alert-title {
+            font-size: 36px;
+            font-weight: 800;
+            color: #1d1d1f;
+            margin-bottom: 12px;
+            line-height: 1.25;
         }
-        .content {
-            padding: 30px 20px;
-        }
-        .alert-box {
-            background: #e8f5e8;
-            border: 2px solid #28a745;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        .price-info {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-        .price-info div {
-            text-align: center;
-            flex: 1;
-        }
-        .price-old {
-            color: #dc3545;
-            text-decoration: line-through;
+
+        .alert-subtitle {
             font-size: 18px;
+            color: #4b5563;
+            font-weight: 400;
+            line-height: 1.75;
         }
-        .price-new {
-            color: #28a745;
-            font-size: 24px;
-            font-weight: bold;
+
+        /* Price Section */
+        .price-section {
+            padding: 32px;
+            background: #ffffff;
         }
-        .price-change {
-            color: #28a745;
-            font-size: 20px;
-            font-weight: bold;
+
+        .price-card {
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            margin-bottom: 24px;
         }
-        .threshold-info {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px 0;
+
+        .price-comparison {
+            margin-bottom: 24px;
+        }
+
+        .price-comparison table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .price-item {
+            text-align: center;
+            width: 40%;
+        }
+
+        .price-arrow-cell {
+            width: 20%;
             text-align: center;
         }
-        .event-details {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        .event-details h3 {
-            margin: 0 0 15px 0;
-            color: #2c3e50;
-            font-size: 20px;
-        }
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #e9ecef;
-        }
-        .detail-row:last-child {
-            border-bottom: none;
-        }
-        .detail-label {
+
+        .price-label {
+            font-size: 12px;
             font-weight: 600;
-            color: #6c757d;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            display: block;
         }
-        .detail-value {
-            color: #2c3e50;
+
+        .price-old {
+            font-size: 24px;
+            font-weight: 700;
+            color: #9ca3af;
+            text-decoration: line-through;
         }
-        .chart-container {
+
+        .price-new {
+            font-size: 48px;
+            font-weight: 900;
+            color: #16a34a;
+            line-height: 1.25;
+        }
+
+        .price-arrow {
+            font-size: 30px;
+            color: #9ca3af;
+        }
+
+        .savings-badge {
+            background: #16a34a;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        /* Threshold Alert */
+        .threshold-alert {
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .threshold-alert table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .threshold-icon {
+            font-size: 24px;
+            color: #2563eb;
+            width: 40px;
             text-align: center;
-            margin: 30px 0;
         }
-        .chart-container img {
-            max-width: 100%;
+
+        .threshold-content {
+            vertical-align: middle;
+            padding-left: 16px;
+        }
+
+        .threshold-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1d4ed8;
+            margin-bottom: 4px;
+        }
+
+        .threshold-details {
+            font-size: 14px;
+            color: #2563eb;
+        }
+
+        /* Event Details */
+        .event-section {
+            padding: 32px;
+            background: #ffffff;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .event-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 24px;
+        }
+
+        .info-grid {
+            margin-bottom: 32px;
+        }
+
+        .info-grid table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .info-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .info-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .info-value {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1d1d1f;
+        }
+
+        .info-value.status {
+            color: #16a34a;
+        }
+
+        /* Chart Section */
+        .chart-section {
+            margin-bottom: 32px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 16px;
+        }
+
+        .chart-container {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .chart-placeholder {
+            height: 200px;
+            background: #ffffff;
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+
+        .chart-icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+            opacity: 0.6;
+            display: block;
+        }
+
+        .chart-text {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .chart-subtext {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .chart-image {
+            width: 100%;
             height: auto;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+
+        /* CTA Section */
+        .cta-section {
+            text-align: center;
+        }
+
         .cta-button {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white !important;
+            background: #2563eb;
+            color: #ffffff;
             text-decoration: none;
-            padding: 15px 30px;
+            padding: 16px 32px;
             border-radius: 50px;
-            font-weight: bold;
-            font-size: 18px;
-            margin: 20px 0;
-            text-align: center;
-            transition: transform 0.2s;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
         }
+
         .cta-button:hover {
-            transform: translateY(-2px);
+            background: #1d4ed8;
         }
+
+        .urgency-text {
+            margin-top: 16px;
+            font-size: 14px;
+            color: #ea580c;
+            font-weight: 500;
+        }
+
+        .timestamp {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        /* Footer */
         .footer {
-            background: #2c3e50;
-            color: white;
-            padding: 20px;
+            padding: 32px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
             text-align: center;
+        }
+
+        .footer-brand {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 8px;
+        }
+
+        .footer-tagline {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 20px;
+        }
+
+        .footer-links {
             font-size: 14px;
         }
-        .footer a {
-            color: #74b9ff;
+
+        .footer-links a {
+            color: #2563eb;
             text-decoration: none;
+            font-weight: 500;
+            margin: 0 8px;
         }
-        .timestamp {
-            color: #6c757d;
-            font-size: 12px;
-            text-align: center;
-            margin-top: 10px;
+
+        .footer-links a:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
         }
-        
-        /* Mobile responsiveness */
-        @media (max-width: 480px) {
-            .container {
-                margin: 10px;
-                border-radius: 8px;
+
+        .footer-separator {
+            color: #d1d5db;
+            margin: 0 8px;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 640px) {
+            body {
+                padding: 16px;
             }
+
             .header {
-                padding: 20px 15px;
+                padding: 32px 24px;
             }
-            .header h1 {
-                font-size: 24px;
+
+            .price-section,
+            .event-section {
+                padding: 24px;
             }
-            .content {
-                padding: 20px 15px;
+
+            .alert-title {
+                font-size: 30px;
             }
-            .price-info {
-                flex-direction: column;
-                gap: 15px;
+
+            .price-new {
+                font-size: 36px;
             }
-            .cta-button {
+
+            .price-comparison table,
+            .price-comparison tbody,
+            .price-comparison tr,
+            .price-comparison td {
                 display: block;
-                margin: 20px 0;
+                width: 100% !important;
+            }
+
+            .price-item,
+            .price-arrow-cell {
+                width: 100% !important;
+                padding: 8px 0;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="email-container">
+        <!-- Header Section -->
         <div class="header">
-            <span class="emoji">🚨</span>
-            <h1>Price Drop Alert!</h1>
+            <div class="alert-badge">
+                🚨 Price Alert
+            </div>
+            <h1 class="alert-title">Target Price Reached</h1>
+            <p class="alert-subtitle">Your watched ticket just dropped below your threshold</p>
         </div>
-        
-        <div class="content">
-            <div class="alert-box">
-                <h2 style="margin: 0; color: #28a745;">Great news! The price dropped below your threshold!</h2>
-            </div>
-            
-            <div class="price-info">
-                <div>
-                    <div class="detail-label">Previous Price</div>
-                    <div class="price-old">${{ old_price}}</div>
+
+        <!-- Price Section -->
+        <div class="price-section">
+            <div class="price-card">
+                <div class="price-comparison">
+                    <table>
+                        <tr>
+                            <td class="price-item">
+                                <span class="price-label">Previous</span>
+                                <div class="price-old">${{ old_price }}</div>
+                            </td>
+                            <td class="price-arrow-cell">
+                                <div class="price-arrow">→</div>
+                            </td>
+                            <td class="price-item">
+                                <span class="price-label">Current</span>
+                                <div class="price-new">${{ new_price }}</div>
+                            </td>
+                        </tr>
+                    </table>
                 </div>
-                <div>
-                    <div style="font-size: 30px; color: #28a745;">→</div>
-                </div>
-                <div>
-                    <div class="detail-label">New Price</div>
-                    <div class="price-new">${{ new_price}}</div>
-                </div>
-                <div>
-                    <div class="detail-label">You Save</div>
-                    <div class="price-change">{{ price_change}}</div>
-                </div>
-            </div>
-            
-            <div class="threshold-info">
-                <strong>✅ Below Your Threshold:</strong> ${{ threshold_price}}
-                <br>
-                <small>You'll be notified when prices drop below this amount</small>
-            </div>
-            
-            <div class="event-details">
-                <h3>{{ concert_name}}</h3>
-                <div class="detail-row">
-                    <span class="detail-label">Venue:</span>
-                    <span class="detail-value">{{ venue}}</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Date:</span>
-                    <span class="detail-value">{{ event_date}}</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Status:</span>
-                    <span class="detail-value">{{ event_status}}</span>
+                <div class="savings-badge">
+                    💰 {{ price_change }}
                 </div>
             </div>
-            
-            {% if chart_image %}
-            <div class="chart-container">
-                <h3 style="margin-bottom: 15px; color: #2c3e50;">Price Trend (Last 7 Days)</h3>
-                <img src="data:image/png;base64,{{ chart_image }}" alt="Price Trend Chart" />
+
+            <!-- Threshold Achievement -->
+            <div class="threshold-alert">
+                <table>
+                    <tr>
+                        <td class="threshold-icon">✅</td>
+                        <td class="threshold-content">
+                            <div class="threshold-title">Target Price Achieved</div>
+                            <div class="threshold-details">Your threshold: ${{ threshold_price }} • Current price: ${{ new_price }}</div>
+                        </td>
+                    </tr>
+                </table>
             </div>
-            {% endif %}
-            
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="{{ purchase_url}}" class="cta-button">
-                    🎫 Buy Tickets Now
+        </div>
+
+        <!-- Event Details -->
+        <div class="event-section">
+            <h2 class="event-title">
+                🎵 {{ concert_name }}
+            </h2>
+
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Venue</span>
+                    <div class="info-value">{{ venue }}</div>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Date</span>
+                    <div class="info-value">{{ event_date }}</div>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Section</span>
+                    <div class="info-value">General Admission</div>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Availability</span>
+                    <div class="info-value status">
+                        ✅ {{ event_status }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="chart-section">
+                <h3 class="chart-title">
+                    📊 Price History
+                </h3>
+                <div class="chart-container">
+                    {% if chart_image %}
+                        <img src="data:image/png;base64,{{ chart_image }}" alt="Price Trend Chart" class="chart-image" />
+                    {% else %}
+                        <div class="chart-placeholder">
+                            <span class="chart-icon">📈</span>
+                            <div class="chart-text">7-Day Price Trend</div>
+                            <div class="chart-subtext">Chart visualization</div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-section">
+                <a href="{{ purchase_url }}" class="cta-button">
+                    🎫 Buy Tickets
                 </a>
-                <br>
-                <small style="color: #6c757d;">
-                    Don't wait - prices may go back up!
-                </small>
-            </div>
-            
-            <div class="timestamp">
-                Alert sent on {{ timestamp}}
+                <div class="urgency-text">Limited time - secure your tickets now</div>
+                <div class="timestamp">{{ timestamp }}</div>
             </div>
         </div>
-        
+
+        <!-- Footer -->
         <div class="footer">
-            <p>
-                <strong>TixScanner</strong> - Your Personal Ticket Price Monitor
-                <br>
-                <small>
-                    You're receiving this because you're tracking this event.
-                    <br>
-                    <a href="mailto:{{ user_email}}">Contact</a> | 
-                    <a href="#">Manage Alerts</a>
-                </small>
-            </p>
+            <div class="footer-brand">TixScanner</div>
+            <div class="footer-tagline">Smart ticket price monitoring</div>
+            <div class="footer-links">
+                <a href="#">Manage Alerts</a>
+                <span class="footer-separator">•</span>
+                <a href="#">Settings</a>
+                <span class="footer-separator">•</span>
+                <a href="#">Unsubscribe</a>
+            </div>
         </div>
     </div>
 </body>

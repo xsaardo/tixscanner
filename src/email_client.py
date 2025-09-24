@@ -164,7 +164,7 @@ class EmailClient:
             html_content = self._render_template('price_alert', context)
             
             # Create email
-            subject = f"🎫 Price Drop: {concert.name} - Now ${new_price:.0f} (↓{price_change_percent:.0f}%)"
+            subject = f"Price Drop: {concert.name} - Now ${new_price:.0f} ({price_change_percent:.0f}% Drop)"
             
             if not recipient:
                 recipient = self.authenticator.get_user_email()
@@ -212,40 +212,29 @@ class EmailClient:
             
             # Prepare concert data
             concert_data = []
-            price_drops = 0
             below_threshold = 0
-            total_savings = Decimal('0')
-            
+
             for concert in concerts:
                 latest_price = get_latest_price(concert.event_id, self.db_path)
-                
+
                 if latest_price:
-                    # Calculate price change (mock for now - would need historical comparison)
-                    price_change = 0  # Placeholder - implement with actual historical data
                     current_price = float(latest_price.price)
-                    
+
                     is_below_threshold = latest_price.price <= concert.threshold_price
                     if is_below_threshold:
                         below_threshold += 1
-                        if price_change < 0:
-                            total_savings += abs(Decimal(str(price_change)))
-                    
-                    if price_change < 0:
-                        price_drops += 1
-                    
+
                     # Generate individual chart
                     chart_image = self.chart_generator.generate_price_trend_chart(
                         concert.event_id, days=7, db_path=self.db_path
                     )
-                    
+
                     concert_data.append({
                         'name': concert.name,
                         'venue': concert.venue or 'TBA',
                         'date': concert.event_date.strftime('%m/%d/%Y') if concert.event_date else 'TBA',
                         'current_price': f"{current_price:.0f}",
                         'threshold_price': f"{concert.threshold_price:.0f}",
-                        'price_change': f"+{abs(price_change):.0f}%" if price_change > 0 else f"{price_change:.0f}%",
-                        'price_trend_class': 'price-down' if price_change < 0 else ('price-up' if price_change > 0 else 'price-same'),
                         'below_threshold': is_below_threshold,
                         'threshold_class': 'below-threshold' if is_below_threshold else 'above-threshold',
                         'chart_image': chart_image,
@@ -254,19 +243,17 @@ class EmailClient:
             
             # Generate summary chart
             summary_chart = self.chart_generator.generate_summary_chart(
-                [{'name': c['name'], 'current_price': float(c['current_price']), 
-                  'price_change_percent': 0, 'threshold_price': float(c['threshold_price'])} 
+                [{'name': c['name'], 'current_price': float(c['current_price']),
+                  'price_change_percent': 0, 'threshold_price': float(c['threshold_price'])}
                  for c in concert_data],
                 self.db_path
             )
-            
+
             # Prepare template context
             context = {
                 'date': datetime.now().strftime('%B %d, %Y'),
                 'total_concerts': len(concerts),
-                'price_drops': price_drops,
                 'below_threshold': below_threshold,
-                'avg_savings': f"{total_savings / max(below_threshold, 1):.0f}",
                 'concerts': concert_data,
                 'summary_chart': summary_chart,
                 'summary_time': datetime.now().strftime('%I:%M %p'),
@@ -277,7 +264,7 @@ class EmailClient:
             html_content = self._render_template('daily_summary', context)
             
             # Create email
-            subject = f"📊 Daily Price Update - {datetime.now().strftime('%B %d')} ({len(concerts)} concerts tracked)"
+            subject = f"Daily Price Update - {datetime.now().strftime('%B %d')} ({len(concerts)} concerts tracked)"
             
             if not recipient:
                 recipient = self.authenticator.get_user_email()

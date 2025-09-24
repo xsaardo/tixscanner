@@ -10,6 +10,7 @@ matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 from matplotlib.patches import Rectangle
 import pandas as pd
 import numpy as np
@@ -129,16 +130,53 @@ class ChartGenerator:
         # Prepare data
         dates = [ph.recorded_at for ph in price_history]
         prices = [float(ph.price) for ph in price_history]
-        
+
+        # Debug logging for date issues (can be reduced to debug level after testing)
+        logger.debug(f"Chart generation for {concert.name}: {len(dates)} data points")
+        if dates:
+            logger.debug(f"Date range: {min(dates)} to {max(dates)}")
+            logger.debug(f"Sample dates: {dates[:3] if len(dates) >= 3 else dates}")
+            logger.debug(f"Date types: {[type(d) for d in dates[:3]]}")
+
+        # Ensure dates are datetime objects
+        processed_dates = []
+        for d in dates:
+            if isinstance(d, str):
+                try:
+                    processed_dates.append(datetime.fromisoformat(d.replace('Z', '+00:00')))
+                except ValueError:
+                    try:
+                        processed_dates.append(datetime.strptime(d, '%Y-%m-%d %H:%M:%S'))
+                    except ValueError:
+                        logger.warning(f"Could not parse date: {d}")
+                        processed_dates.append(datetime.now())
+            elif isinstance(d, datetime):
+                processed_dates.append(d)
+            else:
+                logger.warning(f"Unexpected date type: {type(d)} for {d}")
+                processed_dates.append(datetime.now())
+
+        dates = processed_dates
+
+        # Debug processed dates
+        if dates:
+            logger.debug(f"After processing - Date range: {min(dates)} to {max(dates)}")
+            logger.debug(f"After processing - Sample dates: {dates[:3] if len(dates) >= 3 else dates}")
+            logger.debug(f"After processing - Date types: {[type(d) for d in dates[:3]]}")
+
         # Convert to pandas for easier manipulation
         df = pd.DataFrame({
-            'date': dates,
+            'date': pd.to_datetime(dates),  # Ensure proper datetime conversion
             'price': prices,
             'section': [ph.section or 'General' for ph in price_history]
         })
-        
+
         # Sort by date
         df = df.sort_values('date')
+
+        # Debug pandas datetime conversion
+        logger.debug(f"Pandas date range: {df['date'].min()} to {df['date'].max()}")
+        logger.debug(f"Pandas date dtype: {df['date'].dtype}")
         
         # Group by section if multiple sections exist
         sections = df['section'].unique()
@@ -168,6 +206,12 @@ class ChartGenerator:
             color = colors_cycle[i % len(colors_cycle)]
             line_style = line_styles[i % len(line_styles)]
             marker = markers[i % len(markers)]
+
+            # Debug what matplotlib receives
+            if i == 0:  # Only log for first section
+                logger.debug(f"Plotting dates for section '{section}': {section_data['date'].values[:3]}")
+                logger.debug(f"Date values type: {type(section_data['date'].values)}")
+                logger.debug(f"Individual date type: {type(section_data['date'].iloc[0]) if len(section_data) > 0 else 'N/A'}")
 
             ax.plot(section_data['date'], section_data['price'],
                    color=color, linewidth=2.5, marker=marker, markersize=5,
@@ -203,13 +247,30 @@ class ChartGenerator:
             title += f'\n{concert.venue}'
         ax.set_title(title, fontweight='bold', pad=20)
         
-        # Format x-axis dates
-        if len(dates) > 7:
-            ax.xaxis.set_major_locator(mdates.WeekdayLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
-        else:
-            ax.xaxis.set_major_locator(mdates.DayLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+        # Format x-axis dates based on data span and density
+        if dates:
+            date_range = (max(processed_dates) - min(processed_dates)).days
+            num_points = len(processed_dates)
+
+            logger.debug(f"Configuring date axis: {date_range} days, {num_points} points")
+
+            # Use a more conservative approach with AutoDateLocator
+            # This handles the date range automatically and prevents tick overflow
+            locator = mdates.AutoDateLocator(minticks=3, maxticks=8)
+
+            # Choose formatter based on date range
+            if date_range <= 1:
+                formatter = mdates.DateFormatter('%H:%M')
+            elif date_range <= 7:
+                formatter = mdates.DateFormatter('%m/%d')
+            elif date_range <= 90:
+                formatter = mdates.DateFormatter('%m/%d')
+            else:
+                formatter = mdates.DateFormatter('%m/%y')
+
+            # Apply the date-aware locator and formatter
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(formatter)
         
         # Rotate x-axis labels for better readability
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
