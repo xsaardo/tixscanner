@@ -14,6 +14,7 @@ from typing import Optional, Callable, Dict, Any
 from threading import Thread, Event
 
 from .price_monitor import PriceMonitor
+from .git_backup import GitDatabaseBackup
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +42,28 @@ class MonitoringScheduler:
         self.price_check_interval = 2  # hours
         self.daily_summary_time = dt_time(9, 0)  # 9:00 AM
         self.cleanup_interval_days = 7  # Run cleanup weekly
-        
+        self.backup_time = dt_time(0, 0)  # Midnight for database backup
+
         self._last_price_check = None
         self._last_summary_date = None
         self._last_cleanup_date = None
+        self._last_backup_date = None
+
+        # Initialize git backup system
+        self.git_backup = GitDatabaseBackup()
+
+        # Try to restore database on startup (for Codespaces)
+        try:
+            self.git_backup.restore_database_from_git()
+        except Exception as e:
+            logger.warning(f"Database restore attempt failed: {e}")
         
         logger.info("Monitoring scheduler initialized")
     
     def configure(self, price_check_interval: int = 2,
                  daily_summary_time: dt_time = dt_time(9, 0),
-                 cleanup_interval_days: int = 7) -> None:
+                 cleanup_interval_days: int = 7,
+                 backup_time: dt_time = dt_time(0, 0)) -> None:
         """
         Configure scheduling parameters.
         
@@ -62,10 +75,12 @@ class MonitoringScheduler:
         self.price_check_interval = price_check_interval
         self.daily_summary_time = daily_summary_time
         self.cleanup_interval_days = cleanup_interval_days
-        
+        self.backup_time = backup_time
+
         logger.info(f"Scheduler configured: price checks every {price_check_interval}h, "
                    f"daily summary at {daily_summary_time}, "
-                   f"cleanup every {cleanup_interval_days} days")
+                   f"cleanup every {cleanup_interval_days} days, "
+                   f"backup at {backup_time}")
     
     def start(self) -> None:
         """Start the monitoring scheduler."""
@@ -108,11 +123,15 @@ class MonitoringScheduler:
                 # Check if price check is due
                 if self._should_check_prices(current_time):
                     self._run_price_check()
-                
+
                 # Check if daily summary is due
                 if self._should_send_summary(current_time):
                     self._send_daily_summary()
-                
+
+                # Check if database backup is due
+                if self._should_backup_database(current_time):
+                    self._backup_database()
+
                 # Check if cleanup is due
                 if self._should_run_cleanup(current_time):
                     self._run_cleanup()
@@ -142,11 +161,23 @@ class MonitoringScheduler:
         
         return False
     
+    def _should_backup_database(self, current_time: datetime) -> bool:
+        """Determine if database backup should run."""
+        current_date = current_time.date()
+        current_time_only = current_time.time()
+
+        # Check if we haven't backed up today and it's time
+        if (self._last_backup_date != current_date and
+                current_time_only >= self.backup_time):
+            return True
+
+        return False
+
     def _should_run_cleanup(self, current_time: datetime) -> bool:
         """Determine if database cleanup should run."""
         if not self._last_cleanup_date:
             return True
-        
+
         days_since_cleanup = (current_time.date() - self._last_cleanup_date).days
         return days_since_cleanup >= self.cleanup_interval_days
     
@@ -179,16 +210,31 @@ class MonitoringScheduler:
         except Exception as e:
             logger.error(f"Error sending daily summary: {e}")
     
+    def _backup_database(self) -> None:
+        """Run database backup task."""
+        logger.info("Running scheduled database backup")
+
+        try:
+            result = self.git_backup.backup_database()
+            if result['success']:
+                self._last_backup_date = datetime.now().date()
+                logger.info(f"Database backup completed: {result['message']}")
+            else:
+                logger.error(f"Database backup failed: {result['message']}")
+
+        except Exception as e:
+            logger.error(f"Error during database backup: {e}")
+
     def _run_cleanup(self) -> None:
         """Run database cleanup task."""
         logger.info("Running scheduled database cleanup")
-        
+
         try:
             deleted_count = self.price_monitor.cleanup_old_data()
             self._last_cleanup_date = datetime.now().date()
-            
+
             logger.info(f"Database cleanup completed: {deleted_count} records deleted")
-            
+
         except Exception as e:
             logger.error(f"Error during database cleanup: {e}")
     
@@ -204,6 +250,7 @@ class MonitoringScheduler:
         results = {
             'price_check': None,
             'daily_summary': False,
+            'backup': None,
             'cleanup': 0,
             'timestamp': datetime.now()
         }
@@ -214,7 +261,11 @@ class MonitoringScheduler:
             
             # Send daily summary
             results['daily_summary'] = self.price_monitor.send_daily_summary()
-            
+
+            # Backup database
+            backup_result = self.git_backup.backup_database()
+            results['backup'] = backup_result
+
             # Run cleanup
             results['cleanup'] = self.price_monitor.cleanup_old_data()
             
@@ -232,18 +283,31 @@ class MonitoringScheduler:
         Returns:
             Dictionary with scheduler status information
         """
-        return {
+        status = {
             'is_running': self.is_running,
             'price_check_interval': self.price_check_interval,
             'daily_summary_time': self.daily_summary_time.strftime('%H:%M'),
             'cleanup_interval_days': self.cleanup_interval_days,
+            'backup_time': self.backup_time.strftime('%H:%M'),
             'last_price_check': self._last_price_check,
             'last_summary_date': self._last_summary_date,
+            'last_backup_date': self._last_backup_date,
             'last_cleanup_date': self._last_cleanup_date,
             'next_price_check': self._calculate_next_price_check(),
             'next_summary': self._calculate_next_summary(),
+            'next_backup': self._calculate_next_backup(),
             'next_cleanup': self._calculate_next_cleanup()
         }
+
+        # Add git backup status
+        try:
+            backup_status = self.git_backup.get_backup_status()
+            status['git_backup'] = backup_status
+        except Exception as e:
+            logger.warning(f"Failed to get git backup status: {e}")
+            status['git_backup'] = {'error': str(e)}
+
+        return status
     
     def _calculate_next_price_check(self) -> Optional[datetime]:
         """Calculate next scheduled price check time."""
@@ -265,12 +329,24 @@ class MonitoringScheduler:
         else:
             return today_summary
     
+    def _calculate_next_backup(self) -> datetime:
+        """Calculate next scheduled backup time."""
+        current = datetime.now()
+        today_backup = datetime.combine(current.date(), self.backup_time)
+
+        if self._last_backup_date == current.date() or current.time() >= self.backup_time:
+            # Already backed up today or missed today's time, schedule for tomorrow
+            from datetime import timedelta
+            return today_backup + timedelta(days=1)
+        else:
+            return today_backup
+
     def _calculate_next_cleanup(self) -> datetime:
         """Calculate next scheduled cleanup time."""
         current = datetime.now()
-        
+
         if not self._last_cleanup_date:
             return current
-        
+
         from datetime import timedelta
         return datetime.combine(self._last_cleanup_date, dt_time()) + timedelta(days=self.cleanup_interval_days)

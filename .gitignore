@@ -3,8 +3,8 @@
 config.ini
 
 # Database files
-tickets.db
-*.db
+# NOTE: tickets.db is intentionally tracked for Codespaces persistence
+# *.db  - commented out to allow tickets.db tracking
 *.sqlite
 *.sqlite3
 

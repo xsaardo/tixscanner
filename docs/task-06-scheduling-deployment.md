@@ -26,16 +26,21 @@ Implement the main application entry point with scheduling capabilities, integra
   - [ ] Debug and verbose logging options
 
 ### 2. Scheduling System Implementation
-- [ ] Implement automated scheduling:
-  - [ ] Use `schedule` library for job scheduling
-  - [ ] Configure price monitoring frequency (every 2 hours default)
-  - [ ] Schedule daily summary emails (9 AM default)
-  - [ ] Background task management
-- [ ] Schedule configuration:
-  - [ ] Load schedule settings from config.ini
-  - [ ] Support for different time zones
-  - [ ] Flexible scheduling patterns (hourly, daily, custom)
-  - [ ] Schedule validation and error handling
+- [x] Implement automated scheduling:
+  - [x] Use custom threading-based scheduler (MonitoringScheduler)
+  - [x] Configure price monitoring frequency (every 2 hours default)
+  - [x] Schedule daily summary emails (9 AM default)
+  - [x] Background task management with graceful shutdown
+- [x] Schedule configuration:
+  - [x] Load schedule settings from config.ini
+  - [x] Support for different time zones
+  - [x] Flexible scheduling patterns (configurable intervals)
+  - [x] Schedule validation and error handling
+- [ ] **NEW: Database persistence for Codespaces:**
+  - [ ] Implement git-based database backup system
+  - [ ] Schedule automatic database commits (daily at midnight)
+  - [ ] Handle git authentication in Codespaces environment
+  - [ ] Database restoration on Codespace startup
 
 ### 3. Application Integration
 - [ ] Integrate all components:
@@ -110,16 +115,32 @@ Implement the main application entry point with scheduling capabilities, integra
   - [ ] Monitor system behavior over time
 
 ### 9. Production Deployment
-- [ ] Deploy to GitHub Codespaces:
-  - [ ] Push code to GitHub repository
-  - [ ] Configure Codespaces environment
-  - [ ] Set up environment variables and secrets
-  - [ ] Start application and verify operation
-- [ ] Alternative deployments:
-  - [ ] Local machine cron job setup
-  - [ ] Cloud platform deployment (if chosen)
-  - [ ] Container deployment configuration
-  - [ ] Process monitoring setup
+
+#### Primary: GitHub Codespaces Deployment
+- [ ] **Pre-deployment setup:**
+  - [ ] Update .gitignore to include tickets.db in repository
+  - [ ] Run local OAuth flow and extract tokens using extract_gmail_tokens.py
+  - [ ] Configure GitHub Codespaces secrets (GMAIL_TOKEN_JSON)
+  - [ ] Enable continuous monitoring in main.py (uncomment scheduler lines)
+
+- [ ] **Deploy to GitHub Codespaces:**
+  - [ ] Push code with database to GitHub repository
+  - [ ] Create Codespace from repository
+  - [ ] Verify environment variables are loaded automatically
+  - [ ] Install dependencies: pip install -r requirements.txt
+  - [ ] Start application with screen: screen -S tixscanner && python main.py
+  - [ ] Verify scheduler starts and database persistence works
+
+- [ ] **Validation and monitoring:**
+  - [ ] Test price check execution (should run every 2 hours)
+  - [ ] Test daily summary email (9 AM)
+  - [ ] Verify database commits to git automatically
+  - [ ] Monitor Codespaces resource usage (should stay under 25 hours/month)
+
+#### Alternative: Local Machine Deployment
+- [ ] Local machine cron job setup (fallback option)
+- [ ] Container deployment configuration (Docker option)
+- [ ] Process monitoring setup (systemd/supervisor)
 
 ### 10. Post-Deployment Monitoring
 - [ ] Monitor deployed application:
@@ -142,15 +163,31 @@ Implement the main application entry point with scheduling capabilities, integra
 - [ ] Logging provides adequate visibility
 - [ ] Deployment platform runs application continuously
 - [ ] Resource usage remains within acceptable limits
+- [ ] **Database persistence works correctly:**
+  - [ ] Database survives Codespace restarts
+  - [ ] Automatic git commits happen daily
+  - [ ] Price history is preserved across sessions
+  - [ ] No data loss during normal operation
 
-## Files to Create
-- `main.py` - Main application entry point
-- `src/scheduler.py` - Scheduling logic and job management
-- `src/app_config.py` - Application configuration management
-- `deploy/requirements.txt` - Production dependencies
-- `deploy/setup.sh` - Deployment setup script
-- `deploy/README.md` - Deployment instructions
-- `tests/test_integration.py` - End-to-end integration tests
+## Files to Create/Update
+
+### Already Implemented
+- ✅ `main.py` - Main application entry point (needs scheduler activation)
+- ✅ `src/scheduler.py` - Scheduling logic and job management
+- ✅ `src/config_manager.py` - Application configuration management
+- ✅ `requirements.txt` - Production dependencies
+- ✅ `CODESPACES.md` - Codespaces deployment guide
+
+### New Files Needed for Database Persistence
+- `src/git_backup.py` - Git-based database backup system
+- `deploy/setup_codespaces.sh` - Automated Codespaces setup script
+- `tests/test_persistence.py` - Database persistence integration tests
+
+### Files to Update
+- `.gitignore` - Include tickets.db for persistence
+- `main.py` - Enable scheduler by default for production
+- `src/scheduler.py` - Add database backup scheduling
+- `src/database.py` - Add git backup integration
 
 ## Dependencies
 - All previous tasks (1-5)
@@ -194,18 +231,69 @@ enable_weekend_checks = true
 ## Deployment Options
 
 ### GitHub Codespaces (Recommended)
+
+**Why Codespaces:**
+- ✅ **Free tier**: 120 core hours/month (sufficient for 2-hour monitoring cycles)
+- ✅ **Zero infrastructure setup**: Instant deployment
+- ✅ **Cloud reliability**: No dependency on local machine uptime
+- ✅ **Gmail OAuth integration**: Environment variable support configured
+- ✅ **Resource efficiency**: Scheduler sleeps between checks, using ~25 hours/month
+
+**Resource Usage Analysis:**
+- Price checks (every 2h): ~12 hours/month
+- Daily summaries: ~1 hour/month
+- Scheduler overhead: ~10 hours/month
+- **Total: ~25 hours/month** (well under 120-hour free limit)
+
 ```bash
 # In codespaces terminal
 pip install -r requirements.txt
-python main.py --mode continuous
+
+# For continuous monitoring (recommended)
+screen -S tixscanner
+python main.py  # Runs with scheduler enabled
+# Ctrl+A, D to detach from screen
+
+# Alternative: One-time runs
+python main.py --mode check     # Single price check
+python main.py --mode summary   # Send daily summary only
 ```
 
-### Local Machine with Cron
+### Local Machine with Cron (Alternative)
 ```bash
-# Add to crontab
+# Add to crontab for scheduled runs
 0 */2 * * * cd /path/to/tixscanner && python main.py --mode check
 0 9 * * * cd /path/to/tixscanner && python main.py --mode summary
 ```
+
+**Limitations:**
+- ❌ Requires always-on local machine
+- ❌ No automatic recovery from power/network issues
+- ❌ Manual cron job configuration required
+
+## Database Persistence Strategy
+
+**Challenge:** Codespaces filesystem is ephemeral - data is lost when Codespace stops.
+
+**Solution:** Git-based database persistence (recommended for this use case)
+
+**Why Git-based persistence:**
+- ✅ **Size manageable**: SQLite database ~1-2 MB over time
+- ✅ **Zero additional cost**: Uses existing GitHub repository
+- ✅ **Version control**: Track data changes over time
+- ✅ **Automatic backup**: Integrated with scheduler
+- ✅ **Disaster recovery**: Easy to restore from any commit
+
+**Implementation approach:**
+1. Include `tickets.db` in Git repository (remove from .gitignore)
+2. Add automatic database backup to scheduler (daily at midnight)
+3. Commit and push database changes automatically
+4. On Codespace restart, database is restored from latest commit
+
+**Alternative options considered:**
+- Cloud databases (Supabase/PlanetScale): Requires significant code changes
+- File storage services (Drive/Dropbox): Additional API complexity
+- GitHub Releases: Good for backups, not real-time sync
 
 ## Sample Usage
 ```python
