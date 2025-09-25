@@ -6,6 +6,7 @@ pricing information from popups.
 """
 
 import logging
+import os
 import time
 import random
 from typing import Optional, List, Dict, Any
@@ -52,6 +53,7 @@ class SectionBasedScraper:
         self.timeout = timeout
         self.driver = None
         self.wait = None
+        self._temp_profile_dir = None
         self._setup_driver()
 
         logger.info("Section-based scraper initialized")
@@ -59,17 +61,32 @@ class SectionBasedScraper:
     def _setup_driver(self) -> None:
         """Set up Chrome WebDriver with optimal settings for hover interactions."""
         try:
+            import tempfile
+            import uuid
+
             chrome_options = Options()
 
             if self.headless:
                 chrome_options.add_argument("--headless=new")
 
-            # Essential options for stability
+            # Essential options for stability and container compatibility
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
+
+            # Unique user data directory to avoid conflicts (essential for Codespaces)
+            self._temp_profile_dir = tempfile.mkdtemp(prefix=f"chrome_profile_{uuid.uuid4().hex[:8]}_")
+            chrome_options.add_argument(f"--user-data-dir={self._temp_profile_dir}")
+            logger.debug(f"Using temporary Chrome profile directory: {self._temp_profile_dir}")
+
+            # Additional container/server options
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-features=TranslateUI")
+            chrome_options.add_argument("--disable-ipc-flooding-protection")
 
             # Window size for proper rendering
             chrome_options.add_argument("--window-size=1920,1080")
@@ -81,6 +98,9 @@ class SectionBasedScraper:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--disable-plugins")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--allow-running-insecure-content")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
 
             # Install ChromeDriver automatically
             service = Service(ChromeDriverManager().install())
@@ -449,7 +469,7 @@ class SectionBasedScraper:
             return None
 
     def close(self) -> None:
-        """Close the WebDriver."""
+        """Close the WebDriver and clean up temporary files."""
         if self.driver:
             try:
                 self.driver.quit()
@@ -459,6 +479,17 @@ class SectionBasedScraper:
             finally:
                 self.driver = None
                 self.wait = None
+
+        # Clean up temporary profile directory
+        if self._temp_profile_dir and os.path.exists(self._temp_profile_dir):
+            try:
+                import shutil
+                shutil.rmtree(self._temp_profile_dir, ignore_errors=True)
+                logger.debug(f"Cleaned up temporary Chrome profile directory: {self._temp_profile_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary directory {self._temp_profile_dir}: {e}")
+            finally:
+                self._temp_profile_dir = None
 
     def __enter__(self):
         """Context manager entry."""

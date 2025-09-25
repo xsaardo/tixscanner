@@ -6,6 +6,7 @@ for more precise price monitoring.
 """
 
 import logging
+import os
 import time
 import random
 import re
@@ -43,6 +44,7 @@ class TicketmasterOptimizedScraper:
         self.headless = headless
         self.timeout = timeout
         self.driver = None
+        self._temp_profile_dir = None
         self._setup_driver()
         
         logger.info("Optimized Ticketmaster scraper initialized")
@@ -50,20 +52,31 @@ class TicketmasterOptimizedScraper:
     def _setup_driver(self) -> None:
         """Set up Chrome WebDriver with optimized settings for Ticketmaster."""
         try:
+            import tempfile
+            import uuid
+
             options = Options()
-            
+
             if self.headless:
-                options.add_argument("--headless")
-            
+                options.add_argument("--headless=new")
+
+            # Essential container options (for Codespaces compatibility)
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+
+            # Unique user data directory to avoid conflicts (essential for Codespaces)
+            self._temp_profile_dir = tempfile.mkdtemp(prefix=f"chrome_profile_{uuid.uuid4().hex[:8]}_")
+            options.add_argument(f"--user-data-dir={self._temp_profile_dir}")
+            logger.debug(f"Using temporary Chrome profile directory: {self._temp_profile_dir}")
+
             # Optimized options for Ticketmaster (based on our testing)
             options.add_argument("--disable-images")  # Major speed boost
             # Note: JavaScript enabled for dynamic pricing content
             options.add_argument("--disable-gpu")
-            options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-extensions")
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.154 Safari/537.36")
-            
+
             # Anti-detection (minimal but effective)
             options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -620,7 +633,7 @@ class TicketmasterOptimizedScraper:
         return self.scrape_section_pricing(event_url, target_sections=[section_prefix])
     
     def close(self) -> None:
-        """Close the WebDriver."""
+        """Close the WebDriver and clean up temporary files."""
         if self.driver:
             try:
                 self.driver.quit()
@@ -629,6 +642,17 @@ class TicketmasterOptimizedScraper:
                 logger.error(f"Error closing WebDriver: {e}")
             finally:
                 self.driver = None
+
+        # Clean up temporary profile directory
+        if self._temp_profile_dir and os.path.exists(self._temp_profile_dir):
+            try:
+                import shutil
+                shutil.rmtree(self._temp_profile_dir, ignore_errors=True)
+                logger.debug(f"Cleaned up temporary Chrome profile directory: {self._temp_profile_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary directory {self._temp_profile_dir}: {e}")
+            finally:
+                self._temp_profile_dir = None
     
     def __enter__(self):
         return self
