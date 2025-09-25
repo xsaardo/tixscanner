@@ -58,11 +58,55 @@ class SectionBasedScraper:
 
         logger.info("Section-based scraper initialized")
 
+    def _cleanup_stale_chrome_processes(self) -> None:
+        """Clean up any stale Chrome processes that might interfere with new WebDriver instances."""
+        try:
+            import subprocess
+            import platform
+
+            # Only run cleanup in Linux environments (like Codespaces)
+            if platform.system() == 'Linux':
+                logger.debug("Cleaning up stale Chrome processes in Linux environment")
+
+                # Kill any Chrome processes with specific patterns that indicate WebDriver usage
+                chrome_patterns = [
+                    'chrome.*--remote-debugging-port',
+                    'chrome.*--user-data-dir.*chrome_profile_',
+                    'chromedriver'
+                ]
+
+                for pattern in chrome_patterns:
+                    try:
+                        # Use pkill to find and kill processes matching the pattern
+                        subprocess.run(
+                            ['pkill', '-f', pattern],
+                            capture_output=True,
+                            timeout=5,
+                            check=False  # Don't raise exception if no processes found
+                        )
+                        logger.debug(f"Attempted cleanup of processes matching: {pattern}")
+                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        # pkill might not exist or timeout - continue anyway
+                        pass
+
+                # Small delay to allow processes to terminate
+                time.sleep(1)
+
+            else:
+                logger.debug("Skipping Chrome process cleanup on non-Linux platform")
+
+        except Exception as e:
+            logger.debug(f"Chrome process cleanup failed (non-critical): {e}")
+            # Continue anyway - this is just a cleanup attempt
+
     def _setup_driver(self) -> None:
         """Set up Chrome WebDriver with optimal settings for hover interactions."""
         try:
             import tempfile
             import uuid
+
+            # Clean up any stale Chrome processes in Codespaces environment
+            self._cleanup_stale_chrome_processes()
 
             chrome_options = Options()
 
@@ -77,7 +121,11 @@ class SectionBasedScraper:
             chrome_options.add_experimental_option('useAutomationExtension', False)
 
             # Unique user data directory to avoid conflicts (essential for Codespaces)
-            self._temp_profile_dir = tempfile.mkdtemp(prefix=f"chrome_profile_{uuid.uuid4().hex[:8]}_")
+            # Use process ID and timestamp to ensure complete uniqueness
+            import os
+            process_id = os.getpid()
+            timestamp = int(time.time())
+            self._temp_profile_dir = tempfile.mkdtemp(prefix=f"chrome_profile_{process_id}_{timestamp}_{uuid.uuid4().hex[:8]}_")
             chrome_options.add_argument(f"--user-data-dir={self._temp_profile_dir}")
             logger.debug(f"Using temporary Chrome profile directory: {self._temp_profile_dir}")
 
@@ -472,24 +520,38 @@ class SectionBasedScraper:
         """Close the WebDriver and clean up temporary files."""
         if self.driver:
             try:
+                # Force quit all Chrome processes before closing WebDriver
                 self.driver.quit()
                 logger.debug("WebDriver closed successfully")
+
+                # Additional cleanup for Codespaces - wait a bit for processes to terminate
+                time.sleep(2)
+
             except Exception as e:
                 logger.error(f"Error closing WebDriver: {e}")
             finally:
                 self.driver = None
                 self.wait = None
 
-        # Clean up temporary profile directory
+        # Clean up temporary profile directory with retry logic
         if self._temp_profile_dir and os.path.exists(self._temp_profile_dir):
-            try:
-                import shutil
-                shutil.rmtree(self._temp_profile_dir, ignore_errors=True)
-                logger.debug(f"Cleaned up temporary Chrome profile directory: {self._temp_profile_dir}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temporary directory {self._temp_profile_dir}: {e}")
-            finally:
-                self._temp_profile_dir = None
+            max_retries = 3
+            success = False
+            for attempt in range(max_retries):
+                try:
+                    import shutil
+                    shutil.rmtree(self._temp_profile_dir, ignore_errors=True)
+                    logger.debug(f"Cleaned up temporary Chrome profile directory: {self._temp_profile_dir}")
+                    success = True
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        logger.warning(f"Failed to clean up temporary directory {self._temp_profile_dir} after {max_retries} attempts: {e}")
+                    else:
+                        time.sleep(1)  # Wait before retry
+
+            # Always clear the reference regardless of cleanup success
+            self._temp_profile_dir = None
 
     def __enter__(self):
         """Context manager entry."""
