@@ -15,6 +15,33 @@ fi
 echo "📦 Installing Python dependencies..."
 pip install -r requirements.txt
 
+# Install Chrome for web scraping (required for Selenium)
+echo "🌐 Installing Google Chrome for web scraping..."
+if ! command -v google-chrome &> /dev/null; then
+    # Update package list
+    sudo apt-get update
+
+    # Install wget if not available
+    sudo apt-get install -y wget
+
+    # Download and install Chrome
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+    sudo apt-get update
+    sudo apt-get install -y google-chrome-stable
+
+    # Verify installation
+    if command -v google-chrome &> /dev/null; then
+        echo "✅ Chrome installed successfully"
+        google-chrome --version
+    else
+        echo "❌ Chrome installation failed"
+    fi
+else
+    echo "✅ Chrome already installed"
+    google-chrome --version
+fi
+
 # Check if database exists, if not, initialize it
 if [ ! -f "tickets.db" ]; then
     echo "🗄️  Database not found locally, attempting to restore from git..."
