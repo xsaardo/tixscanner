@@ -1,16 +1,8 @@
 {
   "name": "TixScanner",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
-  "features": {
-    "ghcr.io/devcontainers-contrib/features/apt-packages:1": {
-      "packages": [
-        "wget",
-        "gnupg",
-        "software-properties-common"
-      ]
-    }
-  },
+  "image": "selenium/standalone-chromium:latest",
   "postCreateCommand": ".devcontainer/setup.sh",
+  "remoteUser": "root",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -19,6 +11,5 @@
       ]
     }
   },
-  "forwardPorts": [],
-  "remoteUser": "vscode"
+  "forwardPorts": []
 }

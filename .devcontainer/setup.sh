@@ -1,26 +1,47 @@
 #!/bin/bash
 
+set -e  # Exit on error
+
 echo "🔧 Setting up TixScanner development environment..."
+
+# Verify pre-installed browser and driver (should be in Selenium image)
+echo "🔍 Checking pre-installed browser and driver..."
+
+# Check for Chromium (should be pre-installed in selenium/standalone-chromium image)
+if command -v chromium &> /dev/null; then
+    echo "✅ Chromium found:"
+    chromium --version
+    # Create compatibility symlinks for the code
+    sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome 2>/dev/null || true
+    sudo ln -sf /usr/bin/chromium /usr/bin/chromium-browser 2>/dev/null || true
+elif command -v google-chrome &> /dev/null; then
+    echo "✅ Chrome found:"
+    google-chrome --version
+else
+    echo "❌ No browser found in Selenium image - this shouldn't happen!"
+    exit 1
+fi
+
+# Check for ChromeDriver (should be pre-installed)
+if command -v chromedriver &> /dev/null; then
+    echo "✅ ChromeDriver found:"
+    chromedriver --version
+    # Ensure it's in the expected location
+    sudo ln -sf $(which chromedriver) /usr/local/bin/chromedriver 2>/dev/null || true
+else
+    echo "❌ ChromeDriver not found in Selenium image - this shouldn't happen!"
+    exit 1
+fi
+
+# Update and install packages
+echo "🐍 Setting up Python and Git..."
+apt-get update -qq
+apt-get install -y python3-pip python3-venv git
+pip install --upgrade pip --break-system-packages
 
 # Install Python dependencies
 echo "📦 Installing Python dependencies..."
-pip install -r requirements.txt
-
-# Install Chrome
-echo "🌐 Installing Google Chrome..."
-wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-sudo apt-get update
-sudo apt-get install -y google-chrome-stable
-
-# Verify Chrome installation
-if command -v google-chrome &> /dev/null; then
-    echo "✅ Chrome installed successfully"
-    google-chrome --version
-else
-    echo "❌ Chrome installation failed"
-    exit 1
-fi
+pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Set up git for automated backups
 echo "🔧 Configuring git for automated backups..."
