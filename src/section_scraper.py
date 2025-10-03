@@ -9,6 +9,7 @@ import logging
 import os
 import time
 import random
+import re
 from typing import Optional, List, Dict, Any
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -23,10 +24,8 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException
 )
 from webdriver_manager.chrome import ChromeDriverManager
-import re
 
 logger = logging.getLogger(__name__)
-
 
 class SectionScrapingError(Exception):
     """Exception raised for section scraping errors."""
@@ -53,61 +52,11 @@ class SectionBasedScraper:
         self.timeout = timeout
         self.driver = None
         self.wait = None
-        self._temp_profile_dir = None
         self._setup_driver()
-
-        logger.info("Section-based scraper initialized")
-
-    def _cleanup_stale_chrome_processes(self) -> None:
-        """Clean up any stale Chrome processes that might interfere with new WebDriver instances."""
-        try:
-            import subprocess
-            import platform
-
-            # Only run cleanup in Linux environments (like Codespaces)
-            if platform.system() == 'Linux':
-                logger.debug("Cleaning up stale Chrome processes in Linux environment")
-
-                # Kill any Chrome processes with specific patterns that indicate WebDriver usage
-                chrome_patterns = [
-                    'chrome.*--remote-debugging-port',
-                    'chrome.*--user-data-dir.*chrome_profile_',
-                    'chromedriver'
-                ]
-
-                for pattern in chrome_patterns:
-                    try:
-                        # Use pkill to find and kill processes matching the pattern
-                        subprocess.run(
-                            ['pkill', '-f', pattern],
-                            capture_output=True,
-                            timeout=5,
-                            check=False  # Don't raise exception if no processes found
-                        )
-                        logger.debug(f"Attempted cleanup of processes matching: {pattern}")
-                    except (subprocess.TimeoutExpired, FileNotFoundError):
-                        # pkill might not exist or timeout - continue anyway
-                        pass
-
-                # Small delay to allow processes to terminate
-                time.sleep(1)
-
-            else:
-                logger.debug("Skipping Chrome process cleanup on non-Linux platform")
-
-        except Exception as e:
-            logger.debug(f"Chrome process cleanup failed (non-critical): {e}")
-            # Continue anyway - this is just a cleanup attempt
 
     def _setup_driver(self) -> None:
         """Set up Chrome WebDriver with optimal settings for hover interactions."""
         try:
-            import tempfile
-            import uuid
-
-            # Clean up any stale Chrome processes in Codespaces environment
-            self._cleanup_stale_chrome_processes()
-
             chrome_options = Options()
 
             if self.headless:
@@ -115,19 +64,11 @@ class SectionBasedScraper:
 
             # Essential options for stability and container compatibility
             chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-setuid-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
-
-            # Unique user data directory to avoid conflicts (essential for Codespaces)
-            # Use process ID and timestamp to ensure complete uniqueness
-            import os
-            process_id = os.getpid()
-            timestamp = int(time.time())
-            self._temp_profile_dir = tempfile.mkdtemp(prefix=f"chrome_profile_{process_id}_{timestamp}_{uuid.uuid4().hex[:8]}_")
-            chrome_options.add_argument(f"--user-data-dir={self._temp_profile_dir}")
-            logger.debug(f"Using temporary Chrome profile directory: {self._temp_profile_dir}")
 
             # Additional container/server options
             chrome_options.add_argument("--disable-background-timer-throttling")
@@ -146,21 +87,57 @@ class SectionBasedScraper:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--disable-web-security")
-            chrome_options.add_argument("--allow-running-insecure-content")
             chrome_options.add_argument("--disable-features=VizDisplayCompositor")
 
-            # Install ChromeDriver automatically
-            service = Service(ChromeDriverManager().install())
+            # Force explicit ChromeDriver path to avoid Selenium auto-detection issues in containers
+            import shutil
+            system_chromedriver = shutil.which('chromedriver')
+            try:
+                # First try the known system path
+                explicit_chromedriver_paths = [
+                    '/usr/local/bin/chromedriver',
+                    '/usr/bin/chromedriver',
+                    system_chromedriver
+                ]
 
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.driver.set_page_load_timeout(self.timeout)
-            self.wait = WebDriverWait(self.driver, self.timeout)
+                chromedriver_path = None
+                for path in explicit_chromedriver_paths:
+                    if path and os.path.exists(path) and os.access(path, os.X_OK):
+                        chromedriver_path = path
+                        break
 
-            # Execute script to remove webdriver property
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                if chromedriver_path:
+                    service = Service(chromedriver_path)
+                    logger.debug(f"Using ChromeDriver: {chromedriver_path}")
+                else:
+                    chromedriver_path = ChromeDriverManager().install()
+                    service = Service(chromedriver_path)
+                    logger.debug(f"ChromeDriver installed: {chromedriver_path}")
 
-            logger.debug("Chrome WebDriver initialized successfully for section scraping")
+            except Exception as e:
+                logger.error(f"ChromeDriver setup failed: {e}")
+                raise SectionScrapingError(f"ChromeDriver setup failed: {e}")
+
+            # Add additional Chrome options for container environments
+            chrome_options.add_argument("--disable-background-networking")
+
+
+            # Additional options for ARM64 and container stability
+            chrome_options.add_argument("--disable-software-rasterizer")
+
+            try:
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                self.driver.set_page_load_timeout(self.timeout)
+                self.wait = WebDriverWait(self.driver, self.timeout)
+
+                # Execute script to remove webdriver property
+                self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+                logger.info("WebDriver initialized successfully")
+
+            except Exception as webdriver_error:
+                logger.error(f"WebDriver creation failed: {webdriver_error}")
+                raise SectionScrapingError(f"WebDriver creation failed: {webdriver_error}")
 
         except Exception as e:
             logger.error(f"Failed to initialize WebDriver: {e}")
@@ -184,8 +161,7 @@ class SectionBasedScraper:
         if sections is None:
             sections = ["GENERAL ADMISSION - Standing Room Only"]
 
-        logger.info(f"Scraping section prices for: {event_url}")
-        logger.info(f"Target sections: {sections}")
+        logger.info(f"Scraping prices: {event_url}")
 
         if not self.driver:
             raise SectionScrapingError("WebDriver not initialized")
@@ -200,7 +176,6 @@ class SectionBasedScraper:
 
         try:
             # Navigate to the page
-            logger.debug(f"Loading page: {event_url}")
             self.driver.get(event_url)
 
             # Wait for initial page load
@@ -218,16 +193,14 @@ class SectionBasedScraper:
                 self.wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, '[data-section-name]'))
                 )
-                logger.debug("Interactive map loaded")
             except TimeoutException:
-                logger.warning("Interactive map not found, trying alternative selectors")
+                logger.debug("Interactive map not found")
 
             # Process each section
             successful_sections = []
             failed_sections = []
 
             for section_name in sections:
-                logger.debug(f"Processing section: {section_name}")
                 section_data = self._extract_section_price(section_name)
                 if section_data:
                     result['sections'][section_name] = section_data
@@ -238,12 +211,10 @@ class SectionBasedScraper:
             # Log summary
             if successful_sections:
                 result['success'] = True
-                logger.info(f"Successfully scraped {len(successful_sections)} sections: {successful_sections}")
-                if failed_sections:
-                    logger.info(f"Skipped {len(failed_sections)} sections: {failed_sections}")
+                logger.info(f"Scraped {len(successful_sections)}/{len(sections)} sections")
             else:
                 result['error'] = "No section prices found"
-                logger.warning(f"No section prices found. All {len(failed_sections)} sections failed: {failed_sections}")
+                logger.warning(f"No section prices found for {len(sections)} sections")
 
             return result
 
@@ -272,7 +243,6 @@ class SectionBasedScraper:
         Ticketmaster often shows a popup on page load that needs to be dismissed
         before any interactions can take place.
         """
-        logger.debug("Checking for and handling initial popup")
         try:
             # Expanded modal selectors to catch more popup types
             modal_selectors = ', '.join([
@@ -281,26 +251,20 @@ class SectionBasedScraper:
                 '[data-bdd*="consent"]'
             ])
 
-            # Wait up to 8 seconds for any modal/popup to appear
-            modal_indicators = []
+            # Wait up to 10 seconds for any modal/popup to appear
             try:
                 WebDriverWait(self.driver, 10).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, modal_selectors))
                 )
                 modal_indicators = self.driver.find_elements(By.CSS_SELECTOR, modal_selectors)
-                logger.info(f"Found {len(modal_indicators)} potential modal elements")
             except TimeoutException:
-                logger.info("No modal/popup detected within 8 seconds")
                 return
 
             # Filter to only displayed modals
             visible_modals = [modal for modal in modal_indicators if modal.is_displayed()]
 
             if not visible_modals:
-                logger.info("No visible modal/popup detected - skipping accept button search")
                 return
-
-            logger.info(f"Found {len(visible_modals)} visible modal(s), looking for accept buttons")
 
             # Expanded accept selectors to catch more button types
             combined_selector = ', '.join([
@@ -309,23 +273,18 @@ class SectionBasedScraper:
             ])
 
             try:
-                # Wait longer for accept button to become clickable
+                # Wait for accept button to become clickable
                 accept_button = WebDriverWait(self.driver, 6).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, combined_selector))
                 )
-                logger.info("Found Accept button with CSS selector")
                 accept_button.click()
-                logger.info("Successfully clicked Accept button")
+                logger.debug("Clicked popup accept button")
                 time.sleep(1.5)  # Allow time for popup to dismiss
-                return
             except TimeoutException:
-                logger.info("No accept button found with CSS selectors")
-
-            logger.info("No Accept popup found or already dismissed")
+                logger.debug("No accept button found")
 
         except Exception as e:
-            logger.warning(f"Error handling popup: {e}")
-            # Continue anyway - popup might not be present
+            logger.debug(f"Error handling popup: {e}")
 
     def _extract_section_price(self, section_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -338,18 +297,13 @@ class SectionBasedScraper:
             Dictionary with price information or None if not found
         """
         try:
-            logger.info(f"Looking for section: {section_name}")
-
             # Find the section element
             section_selector = f'[data-section-name="{section_name}"]'
-
-            # Try multiple strategies to find the element
             section_element = None
 
             # Strategy 1: Direct data-section-name attribute
             try:
                 section_element = self.driver.find_element(By.CSS_SELECTOR, section_selector)
-                logger.info(f"Found section using data-section-name: {section_name}")
             except NoSuchElementException:
                 pass
 
@@ -360,7 +314,6 @@ class SectionBasedScraper:
                     for elem in elements:
                         if section_name.lower() in elem.get_attribute('data-section-name').lower():
                             section_element = elem
-                            logger.info(f"Found section using partial match: {elem.get_attribute('data-section-name')}")
                             break
                 except Exception:
                     pass
@@ -370,12 +323,11 @@ class SectionBasedScraper:
                 try:
                     xpath = f"//*[contains(text(), '{section_name}')]"
                     section_element = self.driver.find_element(By.XPATH, xpath)
-                    logger.info(f"Found section using text content: {section_name}")
                 except NoSuchElementException:
                     pass
 
             if not section_element:
-                logger.warning(f"Section not found: {section_name}")
+                logger.debug(f"Section not found: {section_name}")
                 return None
 
             # Scroll element into view
@@ -391,7 +343,6 @@ class SectionBasedScraper:
                     # Hover over the section
                     actions = ActionChains(self.driver)
                     actions.move_to_element(section_element).perform()
-                    logger.info(f"Hovering over section: {section_name} (attempt {attempt + 1})")
 
                     # Wait for popup to appear with explicit wait
                     price_data = self._wait_for_popup_and_extract_price(section_name)
@@ -399,13 +350,11 @@ class SectionBasedScraper:
                     if price_data:
                         break  # Success, exit retry loop
                     elif attempt < max_retries - 1:
-                        logger.info(f"No popup found, retrying hover for {section_name}")
                         # Move mouse away and wait before retry
                         actions.move_by_offset(50, 50).perform()
                         time.sleep(1)
 
                 except Exception as e:
-                    logger.info(f"Hover attempt {attempt + 1} failed for {section_name}: {e}")
                     if attempt == max_retries - 1:
                         raise
 
@@ -414,15 +363,14 @@ class SectionBasedScraper:
                 logger.info(f"Found price for {section_name}: ${price_data.get('price', 'N/A')}")
                 return price_data
             else:
-                logger.warning(f"No price found in popup for {section_name}")
                 return None
 
         except (ElementNotInteractableException, StaleElementReferenceException, ElementClickInterceptedException):
-            logger.warning(f"Section '{section_name}' exists but is not interactable - skipping")
+            logger.debug(f"Section '{section_name}' not interactable")
             return None
 
         except Exception as e:
-            logger.warning(f"Section '{section_name}' could not be processed - skipping")
+            logger.debug(f"Could not process section '{section_name}': {e}")
             return None
 
     def _wait_for_popup_and_extract_price(self, section_name: str, max_wait: float = 5) -> Optional[Dict[str, Any]]:
@@ -437,40 +385,31 @@ class SectionBasedScraper:
             Dictionary with price information or None if not found
         """
         try:
-            logger.info(f"Waiting for popup to appear for section: {section_name}")
-
             # Combine all popup selectors into a single efficient query
-            combined_popup_selector = ', '.join([
-                '[data-bdd="hover-tool-tip-container"]'
-            ])
-
+            combined_popup_selector = '[data-bdd="hover-tool-tip-container"]'
             popup_element = None
 
-            # Single optimized wait for any popup (reduced timeout)
+            # Single optimized wait for any popup
             try:
                 popup_element = WebDriverWait(self.driver, max_wait).until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, combined_popup_selector))
                 )
 
                 # Additional check that it has meaningful text content
-                logger.info(f"Popup text: {popup_element.text}")
-                if popup_element.text.strip():
-                    logger.info(f"Found popup with content")
-                else:
+                if not popup_element.text.strip():
                     popup_element = None
 
             except TimeoutException:
-                logger.info(f"No popup found with primary selectors for {section_name}")
+                return None
 
             if popup_element:
                 # Extract price from the popup
                 return self._extract_price_from_element(popup_element)
             else:
-                logger.info(f"No popup found for section {section_name} after {max_wait}s wait")
                 return None
 
         except Exception as e:
-            logger.info(f"Error waiting for popup for section {section_name}: {e}")
+            logger.debug(f"Error waiting for popup: {e}")
             return None
 
     def _extract_price_from_element(self, popup_element) -> Optional[Dict[str, Any]]:
@@ -486,7 +425,6 @@ class SectionBasedScraper:
         try:
             # Get popup text
             popup_text = popup_element.text
-            logger.info(f"Popup text: {popup_text}")
 
             # Extract price from popup text
             price_patterns = [
@@ -501,7 +439,7 @@ class SectionBasedScraper:
                 match = re.search(pattern, popup_text, re.IGNORECASE)
                 if match:
                     price = float(match.group(1))
-                    logger.info(f"Extracted price: ${price}")
+                    logger.debug(f"Extracted price: ${price}")
 
                     return {
                         'price': price,
@@ -509,11 +447,10 @@ class SectionBasedScraper:
                         'currency': 'USD'
                     }
 
-            logger.info("No price found in popup text")
             return None
 
         except Exception as e:
-            logger.info(f"Error extracting price from popup: {e}")
+            logger.debug(f"Error extracting price: {e}")
             return None
 
     def close(self) -> None:
@@ -522,8 +459,6 @@ class SectionBasedScraper:
             try:
                 # Force quit all Chrome processes before closing WebDriver
                 self.driver.quit()
-                logger.debug("WebDriver closed successfully")
-
                 # Additional cleanup for Codespaces - wait a bit for processes to terminate
                 time.sleep(2)
 
@@ -532,26 +467,6 @@ class SectionBasedScraper:
             finally:
                 self.driver = None
                 self.wait = None
-
-        # Clean up temporary profile directory with retry logic
-        if self._temp_profile_dir and os.path.exists(self._temp_profile_dir):
-            max_retries = 3
-            success = False
-            for attempt in range(max_retries):
-                try:
-                    import shutil
-                    shutil.rmtree(self._temp_profile_dir, ignore_errors=True)
-                    logger.debug(f"Cleaned up temporary Chrome profile directory: {self._temp_profile_dir}")
-                    success = True
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        logger.warning(f"Failed to clean up temporary directory {self._temp_profile_dir} after {max_retries} attempts: {e}")
-                    else:
-                        time.sleep(1)  # Wait before retry
-
-            # Always clear the reference regardless of cleanup success
-            self._temp_profile_dir = None
 
     def __enter__(self):
         """Context manager entry."""
