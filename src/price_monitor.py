@@ -400,7 +400,7 @@ class PriceMonitor:
 
                 # Initialize section scraper if needed
                 if not self.section_scraper:
-                    self.section_scraper = SectionBasedScraper(headless=False, timeout=30)
+                    self.section_scraper = SectionBasedScraper(headless=True, timeout=30)
 
                 # Scrape prices for the specified sections
                 result = self.section_scraper.scrape_section_prices(event_url, sections=target_sections)
