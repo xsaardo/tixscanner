@@ -323,23 +323,23 @@ def delete_concert(event_id: str, db_path: Optional[str] = None) -> bool:
 def add_price_record(price_record: PriceHistory, db_path: Optional[str] = None) -> bool:
     """
     Add a price history record.
-    
+
     Args:
         price_record: PriceHistory instance to add
         db_path: Optional database path
-        
+
     Returns:
         True if successful, False otherwise
     """
     try:
         price_record.validate()
-        
+
         with get_db_transaction(db_path) as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO price_history 
-                (event_id, price, section, ticket_type, availability, recorded_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO price_history
+                (event_id, price, section, ticket_type, availability, source, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     price_record.event_id,
@@ -347,15 +347,16 @@ def add_price_record(price_record: PriceHistory, db_path: Optional[str] = None) 
                     price_record.section,
                     price_record.ticket_type,
                     price_record.availability,
+                    price_record.source,
                     price_record.recorded_at
                 )
             )
-            
+
             price_record.id = cursor.lastrowid
-        
-        logger.debug(f"Added price record for {price_record.event_id}: ${price_record.price}")
+
+        logger.debug(f"Added price record for {price_record.event_id}: ${price_record.price} (source: {price_record.source})")
         return True
-        
+
     except (ValidationError, sqlite3.Error) as e:
         logger.error(f"Failed to add price record: {e}")
         return False
@@ -395,6 +396,7 @@ def get_price_history(event_id: str, days: int = 30, db_path: Optional[str] = No
                     section=row['section'],
                     ticket_type=row['ticket_type'],
                     availability=row['availability'],
+                    source=row.get('source', 'ticketmaster'),
                     recorded_at=datetime.fromisoformat(row['recorded_at'])
                 )
                 price_history.append(record)
@@ -439,6 +441,7 @@ def get_latest_section_price(event_id: str, section: str, db_path: Optional[str]
                     section=row['section'],
                     ticket_type=row['ticket_type'],
                     availability=row['availability'],
+                    source=row.get('source', 'ticketmaster'),
                     recorded_at=datetime.fromisoformat(row['recorded_at'])
                 )
 
@@ -480,11 +483,12 @@ def get_latest_price(event_id: str, db_path: Optional[str] = None) -> Optional[P
                     section=row['section'],
                     ticket_type=row['ticket_type'],
                     availability=row['availability'],
+                    source=row.get('source', 'ticketmaster'),
                     recorded_at=datetime.fromisoformat(row['recorded_at'])
                 )
-            
+
             return None
-            
+
     except Exception as e:
         logger.error(f"Failed to get latest price for {event_id}: {e}")
         return None

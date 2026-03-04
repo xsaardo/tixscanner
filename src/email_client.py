@@ -144,6 +144,16 @@ class EmailClient:
                 event_id, days=7, db_path=self.db_path
             )
             
+            # Determine source from event_id or price history
+            source = 'Ticketmaster'
+            if event_id.startswith('sh:'):
+                source = 'StubHub'
+            else:
+                # Check database for source
+                latest_price = get_latest_price(event_id, self.db_path)
+                if latest_price and latest_price.source == 'stubhub':
+                    source = 'StubHub'
+
             # Prepare template context
             context = {
                 'concert_name': concert.name,
@@ -157,7 +167,8 @@ class EmailClient:
                 'chart_image': chart_image,
                 'purchase_url': concert.url or f"https://www.ticketmaster.com/search?q={concert.name.replace(' ', '+')}",
                 'timestamp': datetime.now().strftime('%B %d, %Y at %I:%M %p'),
-                'user_email': self.authenticator.get_user_email()
+                'user_email': self.authenticator.get_user_email(),
+                'source': source
             }
             
             # Render email content

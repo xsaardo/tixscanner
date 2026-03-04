@@ -17,6 +17,7 @@ from .ticketmaster_api import TicketmasterAPI
 from .email_client import EmailClient
 from .optimized_scraper import TicketmasterOptimizedScraper
 from .section_scraper import SectionBasedScraper
+from .stubhub_scraper import StubHubScraper
 from .models import Concert, PriceHistory
 from .db_operations import (
     get_all_concerts, get_latest_price, add_price_record,
@@ -55,6 +56,7 @@ class PriceMonitor:
         self.enable_scraping = enable_scraping
         self.scraper = None
         self.section_scraper = None
+        self.stubhub_scraper = None
 
         # Load configuration for sections
         self.config_manager = ConfigManager(config_path) if config_path else None
@@ -151,24 +153,43 @@ class PriceMonitor:
         }
 
         # Process each configured concert
-        for event_id, threshold_price in configured_concerts.items():
+        for event_key, threshold_price in configured_concerts.items():
             try:
-                # Ensure the concert exists in the database (create if needed)
-                concert = ensure_concert_exists(event_id, threshold_price, self.db_path)
+                # Parse source and event_id from key
+                if event_key.startswith('tm:'):
+                    source = 'ticketmaster'
+                    event_id = event_key[3:]  # Remove 'tm:' prefix
+                elif event_key.startswith('sh:'):
+                    source = 'stubhub'
+                    event_id = event_key[3:]  # Remove 'sh:' prefix
+                else:
+                    # Should not happen due to config normalization, but handle gracefully
+                    source = 'ticketmaster'
+                    event_id = event_key
 
-                if not concert:
-                    logger.error(f"Could not ensure concert {event_id} exists in database")
-                    results['errors'] += 1
-                    results['results'].append({
-                        'event_id': event_id,
-                        'error': 'Could not ensure concert exists in database',
-                        'price_found': False,
-                        'alert_sent': False
-                    })
-                    continue
+                logger.debug(f"Processing {source} event: {event_id}")
 
-                # Check price for this concert
-                result = self._check_concert_price(concert)
+                # For StubHub events, use the full key as event_id to store the URL
+                if source == 'stubhub':
+                    result = self._check_stubhub_price(event_key, event_id, threshold_price)
+                else:
+                    # Ensure the concert exists in the database (create if needed)
+                    concert = ensure_concert_exists(event_id, threshold_price, self.db_path)
+
+                    if not concert:
+                        logger.error(f"Could not ensure concert {event_id} exists in database")
+                        results['errors'] += 1
+                        results['results'].append({
+                            'event_id': event_id,
+                            'error': 'Could not ensure concert exists in database',
+                            'price_found': False,
+                            'alert_sent': False
+                        })
+                        continue
+
+                    # Check price for this concert
+                    result = self._check_concert_price(concert)
+
                 results['results'].append(result)
 
                 if result['price_found']:
@@ -178,10 +199,10 @@ class PriceMonitor:
                     results['alerts_sent'] += 1
 
             except Exception as e:
-                logger.error(f"Error processing concert {event_id}: {e}")
+                logger.error(f"Error processing concert {event_key}: {e}")
                 results['errors'] += 1
                 results['results'].append({
-                    'event_id': event_id,
+                    'event_id': event_key,
                     'error': str(e),
                     'price_found': False,
                     'alert_sent': False
@@ -355,6 +376,124 @@ class PriceMonitor:
         
         return result
     
+    def _check_stubhub_price(self, event_key: str, event_url: str, threshold_price: Decimal) -> Dict[str, Any]:
+        """
+        Check price for a StubHub event.
+
+        Args:
+            event_key: Full event key (e.g., 'sh:https://...')
+            event_url: StubHub event URL or ID
+            threshold_price: Price threshold for alerts
+
+        Returns:
+            Dictionary with check results
+        """
+        logger.info(f"Checking StubHub price for {event_url}")
+
+        result = {
+            'event_id': event_key,
+            'current_price': None,
+            'previous_price': None,
+            'price_change': None,
+            'price_change_percent': None,
+            'below_threshold': False,
+            'significant_drop': False,
+            'alert_sent': False,
+            'price_found': False,
+            'error': None,
+            'source': 'stubhub'
+        }
+
+        try:
+            # Initialize StubHub scraper if needed
+            if not self.stubhub_scraper:
+                self.stubhub_scraper = StubHubScraper(request_delay=2.0)
+
+            # Scrape prices
+            scrape_result = self.stubhub_scraper.scrape_event_prices(event_url)
+
+            if not scrape_result.get('success'):
+                logger.warning(f"StubHub scraping failed for {event_url}: {scrape_result.get('error')}")
+                result['error'] = scrape_result.get('error', 'Scraping failed')
+                return result
+
+            min_price = scrape_result.get('min_price')
+            if not min_price:
+                logger.warning(f"No prices found for StubHub event {event_url}")
+                result['error'] = 'No prices found'
+                return result
+
+            result['current_price'] = min_price
+            result['price_found'] = True
+
+            # Get previous price for this event
+            previous_price_record = get_latest_price(event_key, self.db_path)
+            if previous_price_record:
+                result['previous_price'] = previous_price_record.price
+                price_change = min_price - previous_price_record.price
+                result['price_change'] = price_change
+
+                if previous_price_record.price > 0:
+                    change_percent = (price_change / previous_price_record.price) * 100
+                    result['price_change_percent'] = float(change_percent)
+
+                    # Check for significant drop
+                    if change_percent <= -self.min_price_drop_percent:
+                        result['significant_drop'] = True
+
+            # Check if below threshold
+            if min_price <= threshold_price:
+                result['below_threshold'] = True
+
+            # Store price in database
+            price_history = PriceHistory(
+                event_id=event_key,
+                price=min_price,
+                section='General',  # StubHub doesn't provide section detail in min price
+                source='stubhub',
+                recorded_at=datetime.now()
+            )
+            add_price_record(price_history, self.db_path)
+            logger.debug(f"Stored StubHub price for {event_key}: ${min_price}")
+
+            # Send alert if conditions are met
+            if result['significant_drop'] or result['below_threshold']:
+                try:
+                    # Create a minimal concert object for email
+                    from .models import Concert
+                    # Extract event name from URL if possible
+                    event_name = event_url.split('/')[-2].replace('-', ' ').title() if '/' in event_url else f"StubHub Event"
+
+                    # Try to get existing concert or create temporary one
+                    from .db_operations import get_concert
+                    concert = get_concert(event_key, self.db_path)
+                    if not concert:
+                        concert = Concert(
+                            event_id=event_key,
+                            name=event_name,
+                            threshold_price=threshold_price,
+                            url=event_url
+                        )
+
+                    prev_price = result['previous_price'] if result['previous_price'] else min_price
+                    if self.email_client.send_price_alert(
+                        event_key,
+                        prev_price,
+                        min_price
+                    ):
+                        result['alert_sent'] = True
+                        logger.info(f"Price alert sent for StubHub event {event_key}")
+                except Exception as e:
+                    logger.error(f"Failed to send alert for StubHub event {event_key}: {e}")
+
+            logger.debug(f"StubHub price check completed for {event_key}: ${min_price}")
+
+        except Exception as e:
+            logger.error(f"Error checking StubHub price for {event_url}: {e}")
+            result['error'] = str(e)
+
+        return result
+
     def _get_section_threshold(self, event_id: str, section_name: str, default_threshold: Decimal) -> Decimal:
         """
         Get threshold for a specific section, falling back to default if not configured.
@@ -471,6 +610,14 @@ class PriceMonitor:
                 logger.debug("Section scraper cleaned up")
             except Exception as e:
                 logger.error(f"Error cleaning up section scraper: {e}")
+
+        if self.stubhub_scraper:
+            try:
+                self.stubhub_scraper.close()
+                self.stubhub_scraper = None
+                logger.debug("StubHub scraper cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up StubHub scraper: {e}")
     
     def send_daily_summary(self) -> bool:
         """

@@ -16,7 +16,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Database schema version for future migrations
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Default database path
 DEFAULT_DB_PATH = "tickets.db"
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS price_history (
     section TEXT,
     ticket_type TEXT,
     availability INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'ticketmaster',
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (event_id) REFERENCES concerts (event_id)
 );
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS email_log (
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_price_history_event_id ON price_history (event_id);",
     "CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON price_history (recorded_at);",
+    "CREATE INDEX IF NOT EXISTS idx_price_history_source ON price_history (source);",
     "CREATE INDEX IF NOT EXISTS idx_email_log_event_id ON email_log (event_id);",
     "CREATE INDEX IF NOT EXISTS idx_email_log_sent_at ON email_log (sent_at);"
 ]
@@ -155,13 +157,66 @@ def get_db_transaction(db_path: Optional[str] = None) -> Generator[sqlite3.Conne
             conn.close()
 
 
+def migrate_database(db_path: Optional[str] = None) -> bool:
+    """
+    Migrate database schema to current version.
+
+    Args:
+        db_path: Path to the database file
+
+    Returns:
+        True if migration successful, False otherwise
+    """
+    try:
+        with get_db_transaction(db_path) as conn:
+            # Get current schema version
+            try:
+                result = conn.execute(
+                    "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
+                ).fetchone()
+                current_version = result[0] if result else 0
+            except sqlite3.OperationalError:
+                current_version = 0
+
+            logger.info(f"Current schema version: {current_version}, target: {SCHEMA_VERSION}")
+
+            # Migration from version 1 to 2: Add source column to price_history
+            if current_version < 2:
+                logger.info("Migrating schema from version 1 to 2: Adding source column")
+                try:
+                    # Check if column already exists
+                    cursor = conn.execute("PRAGMA table_info(price_history)")
+                    columns = [row[1] for row in cursor.fetchall()]
+
+                    if 'source' not in columns:
+                        conn.execute(
+                            "ALTER TABLE price_history ADD COLUMN source TEXT DEFAULT 'ticketmaster'"
+                        )
+                        logger.info("Added source column to price_history table")
+                    else:
+                        logger.info("Source column already exists")
+
+                    # Create index for source column
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_price_history_source ON price_history (source)")
+
+                except sqlite3.OperationalError as e:
+                    logger.error(f"Migration error: {e}")
+                    return False
+
+            return True
+
+    except Exception as e:
+        logger.error(f"Failed to migrate database: {e}")
+        return False
+
+
 def initialize_database(db_path: Optional[str] = None) -> bool:
     """
     Initialize the database with required tables and indexes.
-    
+
     Args:
         db_path: Path to the database file
-        
+
     Returns:
         True if initialization successful, False otherwise
     """
@@ -172,20 +227,24 @@ def initialize_database(db_path: Optional[str] = None) -> bool:
             conn.execute(CREATE_PRICE_HISTORY_TABLE)
             conn.execute(CREATE_EMAIL_LOG_TABLE)
             conn.execute(CREATE_SCHEMA_VERSION_TABLE)
-            
+
             # Create indexes
             for index_sql in CREATE_INDEXES:
                 conn.execute(index_sql)
-            
+
             # Insert or update schema version
             conn.execute(
                 "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
                 (SCHEMA_VERSION,)
             )
-            
+
             logger.info("Database initialized successfully")
-            return True
-            
+
+        # Run migrations if needed
+        migrate_database(db_path)
+
+        return True
+
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         return False

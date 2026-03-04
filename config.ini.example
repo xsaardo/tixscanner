@@ -26,11 +26,23 @@ minimum_price_drop_percent = 10
 max_price_history_days = 90
 
 [concerts]
-# Format: event_id = max_price_threshold
-# Example entries (replace with real Ticketmaster event IDs):
+# Format: [source:]event_id_or_url = max_price_threshold
+# Supported sources:
+#   tm: or no prefix - Ticketmaster event ID
+#   sh: - StubHub event URL or ID
+#
+# Example entries:
+# Ticketmaster events (legacy format, assumes tm: prefix):
 # 1234567890 = 150.00
 # 0987654321 = 75.00
-# 1122334455 = 200.00
+#
+# Ticketmaster events (explicit tm: prefix):
+# tm:1234567890 = 150.00
+# tm:0987654321 = 75.00
+#
+# StubHub events (use full URL or event ID):
+# sh:https://www.stubhub.com/event-name-tickets/event/123456/ = 100.00
+# sh:987654321 = 120.00
 
 [logging]
 # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
