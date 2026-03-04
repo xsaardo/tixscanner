@@ -130,29 +130,44 @@ class ConfigManager:
     def get_concert_config(self) -> Dict[str, Decimal]:
         """
         Get concert tracking configuration.
-        
+
+        Supports both Ticketmaster (tm: or no prefix) and StubHub (sh:) events.
+
         Returns:
-            Dictionary mapping event_id to threshold_price
+            Dictionary mapping event_id (with source prefix) to threshold_price
+            Example: {'tm:1234567890': Decimal('150.00'), 'sh:https://stubhub.com/...': Decimal('100.00')}
         """
         concerts = {}
-        
+
         if not self.config.has_section('concerts'):
             logger.warning("No [concerts] section found in configuration")
             return concerts
-        
+
         try:
-            for event_id, threshold_str in self.config.items('concerts'):
+            for event_key, threshold_str in self.config.items('concerts'):
                 try:
                     threshold_price = Decimal(threshold_str)
-                    concerts[event_id] = threshold_price
+
+                    # Normalize event key:
+                    # - If it starts with tm: or sh:, keep as-is
+                    # - Otherwise, assume it's a Ticketmaster event and add tm: prefix
+                    if event_key.startswith('tm:') or event_key.startswith('sh:'):
+                        normalized_key = event_key
+                    else:
+                        # Legacy format: assume Ticketmaster
+                        normalized_key = f'tm:{event_key}'
+
+                    concerts[normalized_key] = threshold_price
+                    logger.debug(f"Loaded event: {normalized_key} → ${threshold_price}")
+
                 except Exception as e:
-                    logger.error(f"Invalid threshold price for event {event_id}: {threshold_str} ({e})")
-            
+                    logger.error(f"Invalid threshold price for event {event_key}: {threshold_str} ({e})")
+
             logger.info(f"Loaded {len(concerts)} concert configurations")
-            
+
         except Exception as e:
             logger.error(f"Error parsing concert configuration: {e}")
-        
+
         return concerts
     
     def get_section_config(self) -> Dict[str, List[str]]:

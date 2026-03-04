@@ -148,13 +148,14 @@ class Concert:
 class PriceHistory:
     """
     Price history model for tracking ticket price changes.
-    
+
     Attributes:
         event_id: Reference to concert event
         price: Ticket price
         section: Venue section (if available)
         ticket_type: Type of ticket (general, VIP, etc.)
         availability: Number of tickets available
+        source: Data source ('ticketmaster' or 'stubhub')
         recorded_at: When this price was recorded
         id: Database primary key (auto-generated)
     """
@@ -163,6 +164,7 @@ class PriceHistory:
     section: Optional[str] = None
     ticket_type: Optional[str] = None
     availability: int = 0
+    source: str = 'ticketmaster'
     recorded_at: datetime = field(default_factory=datetime.now)
     id: Optional[int] = None
     
@@ -250,6 +252,7 @@ class PriceHistory:
             'section': self.section,
             'ticket_type': self.ticket_type,
             'availability': self.availability,
+            'source': self.source,
             'recorded_at': self.recorded_at.isoformat()
         }
     
